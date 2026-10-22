@@ -21,6 +21,8 @@ export interface BridgeOptions {
   port: number;
   /** WebSocket ping interval after handshake. Defaults to 30 s (Cloudflare idle limit is ~100 s). */
   pingIntervalMs?: number;
+  /** Events kept for replay on reconnect; older cursors get a snapshot. Defaults to 1000. */
+  replayLimit?: number;
   /** The agent session this bridge exposes. */
   gateway: SessionGateway;
 }
@@ -45,8 +47,14 @@ const CLOSE_INTERNAL_ERROR = 1011;
  * the socket.
  */
 export async function startBridge(options: BridgeOptions): Promise<Bridge> {
-  const { token, port, pingIntervalMs = 30_000, gateway } = options;
-  const session = new Session(gateway);
+  const {
+    token,
+    port,
+    pingIntervalMs = 30_000,
+    gateway,
+    replayLimit,
+  } = options;
+  const session = new Session(gateway, replayLimit);
   const expected = Buffer.from(`Bearer ${token}`);
   const isAuthorized = (req: IncomingMessage): boolean => {
     const given = Buffer.from(req.headers.authorization ?? "");
@@ -178,7 +186,11 @@ function serve(ws: WebSocket, pingIntervalMs: number, session: Session): void {
     handshaken = true;
     send({ type: "result", id, result: { protocolVersion: PROTOCOL_VERSION } });
     pinger = setInterval(() => ws.ping(), pingIntervalMs);
-    unsubscribe = session.subscribe((event) =>
+    // A missing or invalid cursor means "nothing seen": a full snapshot is always safe.
+    const lastSeq = Number.isInteger(params.lastSeq)
+      ? (params.lastSeq as number)
+      : 0;
+    unsubscribe = session.subscribe(lastSeq, (event) =>
       send({ type: "event", ...event })
     );
     return true;

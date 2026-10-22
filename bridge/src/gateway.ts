@@ -14,9 +14,19 @@ export interface SessionGateway {
   steer(text: string): Promise<void>;
   /** Queues `text` to be delivered once the active run has finished its pending work. */
   followUp(text: string): Promise<void>;
+  /**
+   * The session's completed messages, oldest first: the authoritative history
+   * behind a catch-up snapshot. Excludes a message still being generated.
+   */
+  transcript(): TranscriptMessage[];
   /** Registers `listener` for session events; returns the unsubscribe function. */
   subscribe(listener: (event: GatewayEvent) => void): () => void;
 }
+
+/** A completed conversation message as the app shows it. */
+export type TranscriptMessage =
+  | { role: "user"; text: string }
+  | { role: "assistant"; text: string; thinking: string };
 
 /** How a run ended. `success` is a normal finish. */
 export type StopReason = "success" | "error" | "aborted";

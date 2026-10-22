@@ -2,19 +2,17 @@ import type {
   AgentSession,
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
-import type { GatewayEvent, SessionGateway } from "./gateway.js";
+import type {
+  GatewayEvent,
+  SessionGateway,
+  TranscriptMessage,
+} from "./gateway.js";
 
 /** The slice of pi's `AgentSession` the bridge relies on. */
 export type PiSession = Pick<
   AgentSession,
-  "prompt" | "steer" | "followUp" | "subscribe" | "dispose"
+  "prompt" | "steer" | "followUp" | "subscribe" | "dispose" | "messages"
 >;
-
-type MessageEnd = Extract<AgentSessionEvent, { type: "message_end" }>;
-type AssistantContent = Extract<
-  MessageEnd["message"],
-  { role: "assistant" }
->["content"];
 
 /**
  * `SessionGateway` backed by a real pi `AgentSession`. Translates pi's session
@@ -61,6 +59,26 @@ export class PiGateway implements SessionGateway {
 
   async followUp(text: string): Promise<void> {
     await this.session.followUp(text, undefined, { source: "rpc" });
+  }
+
+  transcript(): TranscriptMessage[] {
+    const history: TranscriptMessage[] = [];
+    for (const message of this.session.messages) {
+      if (message.role === "user") {
+        const text =
+          typeof message.content === "string"
+            ? message.content
+            : joinBlocks(message.content, "text");
+        history.push({ role: "user", text });
+      } else if (message.role === "assistant") {
+        const text = joinBlocks(message.content, "text");
+        const thinking = joinBlocks(message.content, "thinking");
+        // A turn that only called tools has nothing to show.
+        if (text || thinking)
+          history.push({ role: "assistant", text, thinking });
+      }
+    }
+    return history;
   }
 
   subscribe(listener: (event: GatewayEvent) => void): () => void {
@@ -168,16 +186,16 @@ export class PiGateway implements SessionGateway {
   }
 }
 
-/** Concatenates the `kind` blocks of an assistant message (`text` or `thinking`). */
+/** Concatenates the `kind` blocks of a message's content (`text` or `thinking`). */
 function joinBlocks(
-  content: AssistantContent,
+  content: ReadonlyArray<{ type: string; text?: string; thinking?: string }>,
   kind: "text" | "thinking"
 ): string {
   let joined = "";
   for (const block of content) {
-    if (block.type === "text" && kind === "text") joined += block.text;
+    if (block.type === "text" && kind === "text") joined += block.text ?? "";
     else if (block.type === "thinking" && kind === "thinking")
-      joined += block.thinking;
+      joined += block.thinking ?? "";
   }
   return joined;
 }

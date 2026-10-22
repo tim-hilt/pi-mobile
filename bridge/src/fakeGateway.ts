@@ -1,10 +1,16 @@
-import type { GatewayEvent, SessionGateway } from "./gateway.js";
+import type {
+  GatewayEvent,
+  SessionGateway,
+  TranscriptMessage,
+} from "./gateway.js";
 
 /** Scriptable `SessionGateway` double: tests drive events and observe how prompts were routed. */
 export class FakeGateway implements SessionGateway {
   readonly prompts: string[] = [];
   readonly steers: string[] = [];
   readonly followUps: string[] = [];
+  /** What `transcript()` reports; tests set it to the history they want snapshotted. */
+  messages: TranscriptMessage[] = [];
   /** When set, the next call to any prompt method rejects with it. */
   failNextWith: Error | undefined;
 
@@ -13,6 +19,8 @@ export class FakeGateway implements SessionGateway {
   prompt = (text: string) => this.accept(this.prompts, text);
   steer = (text: string) => this.accept(this.steers, text);
   followUp = (text: string) => this.accept(this.followUps, text);
+
+  transcript = () => this.messages;
 
   subscribe(listener: (event: GatewayEvent) => void): () => void {
     this.listeners.add(listener);

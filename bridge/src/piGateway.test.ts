@@ -1,4 +1,5 @@
 import type {
+  AgentSession,
   AgentSessionEvent,
   AgentSessionEventListener,
   PromptOptions,
@@ -12,6 +13,8 @@ import { PiGateway, type PiSession } from "./piGateway.js";
  * session events pi would, in the shapes documented in pi's SDK docs.
  */
 class FakePiSession implements PiSession {
+  /** What pi's `messages` holds: completed messages of every role. */
+  messages: AgentSession["messages"] = [];
   readonly steers: string[] = [];
   readonly followUps: string[] = [];
   disposed = false;
@@ -260,4 +263,40 @@ test("dispose stops event delivery and disposes the pi session", async () => {
 
   expect(pi.disposed).toBe(true);
   expect(events).toEqual([]);
+});
+
+test("the transcript holds completed user and assistant messages, text and thinking only", () => {
+  const { pi, gateway } = setup();
+  pi.messages = [
+    { role: "system", content: "be nice" },
+    { role: "user", content: "hi" },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "see " },
+        { type: "image", data: "...", mimeType: "image/png" },
+        { type: "text", text: "this" },
+      ],
+    },
+    {
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "hm" },
+        { type: "text", text: "Hello" },
+        { type: "toolCall", id: "t1", name: "bash", arguments: {} },
+      ],
+    },
+    { role: "toolResult", toolCallId: "t1", content: [] },
+    // A tool-call-only turn has nothing to show.
+    {
+      role: "assistant",
+      content: [{ type: "toolCall", id: "t2", name: "bash", arguments: {} }],
+    },
+  ] as never;
+
+  expect(gateway.transcript()).toEqual([
+    { role: "user", text: "hi" },
+    { role: "user", text: "see this" },
+    { role: "assistant", text: "Hello", thinking: "hm" },
+  ]);
 });

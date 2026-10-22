@@ -42,7 +42,6 @@ struct ConnectionView: View {
       guard let saved = store.load() else { return }
       address = saved.url.absoluteString
       token = saved.token
-      if client.state == .offline { client.connect(to: saved) }
     }
   }
 

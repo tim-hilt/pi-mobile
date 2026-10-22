@@ -32,8 +32,32 @@ struct Record: Decodable, Sendable {
   let error: ProtocolError?
   /// `hello` result payload.
   let result: HelloResult?
+  /// Event sequence number (`event` only).
+  let seq: Int?
+  /// Event name, e.g. `delta` (`event` only).
+  let name: String?
+  let data: EventData?
 
   struct HelloResult: Decodable, Sendable {
     let protocolVersion: Int?
+  }
+
+  /// Union of the `data` fields of the events the app renders; each event sets its own subset.
+  struct EventData: Decodable, Sendable {
+    /// `delta`: `text` or `thinking`.
+    let kind: String?
+    /// `delta` increment, or `messageEnd` authoritative text.
+    let text: String?
+    let thinking: String?
+    /// `transcript` snapshot.
+    let messages: [WireMessage]?
+    let running: Bool?
+
+    struct WireMessage: Decodable, Sendable {
+      let role: String
+      let text: String
+      let thinking: String?
+      let streaming: Bool?
+    }
   }
 }

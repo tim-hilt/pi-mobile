@@ -13,13 +13,15 @@ afterEach(async () => {
 
 async function bridge(
   pingIntervalMs?: number,
-  gateway = new FakeGateway()
+  gateway = new FakeGateway(),
+  replayLimit?: number
 ): Promise<Bridge> {
   const b = await startBridge({
     token: TOKEN,
     port: 0,
     pingIntervalMs,
     gateway,
+    replayLimit,
   });
   cleanups.push(() => b.close());
   return b;
@@ -57,12 +59,12 @@ async function connect(b: Bridge, token: string | null = TOKEN) {
   };
 }
 
-const hello = (id: number, protocolVersion: number) =>
+const hello = (id: number, protocolVersion: number, lastSeq = 0) =>
   JSON.stringify({
     type: "command",
     id,
     name: "hello",
-    params: { protocolVersion, lastSeq: 0 },
+    params: { protocolVersion, lastSeq },
   }) + "\n";
 
 test("valid token and supported version are acked, then pinged", async () => {
@@ -168,6 +170,7 @@ test("one frame may carry several records", async () => {
   );
 
   expect(await c.next()).toMatchObject({ id: 1, result: expect.anything() });
+  await c.next(); // transcript snapshot
   expect(await c.next()).toEqual({
     type: "result",
     id: 2,
@@ -180,13 +183,32 @@ test("binds to localhost only", async () => {
   expect(b.host).toBe("127.0.0.1");
 });
 
-/** Connects and completes the handshake, leaving the connection ready for commands. */
+/**
+ * Connects fresh and completes the handshake (consuming the hello result and
+ * the catch-up snapshot), leaving the connection ready for commands.
+ */
 async function ready(b: Bridge) {
   const c = await connect(b);
   c.send(hello(1, PROTOCOL_VERSION));
   await c.next();
+  await c.next();
   return c;
 }
+
+/** Connects with a replay cursor; consumes the hello result only. */
+async function resume(b: Bridge, lastSeq: number) {
+  const c = await connect(b);
+  c.send(hello(1, PROTOCOL_VERSION, lastSeq));
+  await c.next();
+  return c;
+}
+
+const wire = (seq: number, name: string, data: object) => ({
+  type: "event",
+  seq,
+  name,
+  data,
+});
 
 const command = (id: number, name: string, params: object) =>
   JSON.stringify({ type: "command", id, name, params }) + "\n";
@@ -393,4 +415,115 @@ test.each([
     id: 2,
     error: { code: "invalidParams" },
   });
+});
+
+test("a fresh connect gets a transcript snapshot at the current seq", async () => {
+  const gateway = new FakeGateway();
+  gateway.messages = [
+    { role: "user", text: "hi" },
+    { role: "assistant", text: "Hello", thinking: "hm" },
+  ];
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+
+  const c = await resume(b, 0);
+
+  expect(await c.next()).toEqual(
+    wire(2, "transcript", { messages: gateway.messages, running: false })
+  );
+});
+
+test("a snapshot taken mid-run includes the message still streaming", async () => {
+  const gateway = new FakeGateway();
+  gateway.messages = [{ role: "user", text: "hi" }];
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "delta", kind: "thinking", text: "hm" });
+  gateway.emit({ name: "delta", kind: "text", text: "Hel" });
+  gateway.emit({ name: "delta", kind: "text", text: "lo" });
+
+  const c = await resume(b, 0);
+  expect(await c.next()).toEqual(
+    wire(4, "transcript", {
+      messages: [
+        { role: "user", text: "hi" },
+        { role: "assistant", text: "Hello", thinking: "hm", streaming: true },
+      ],
+      running: true,
+    })
+  );
+
+  gateway.emit({ name: "messageEnd", text: "Hello!", thinking: "hm" });
+  const next = await c.next();
+  expect(next).toEqual(
+    wire(5, "messageEnd", { text: "Hello!", thinking: "hm" })
+  );
+});
+
+test("a snapshot never repeats a message that already ended", async () => {
+  const gateway = new FakeGateway();
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "delta", kind: "text", text: "Hi" });
+  gateway.messages = [{ role: "assistant", text: "Hi", thinking: "" }];
+  gateway.emit({ name: "messageEnd", text: "Hi", thinking: "" });
+
+  const c = await resume(b, 0);
+
+  expect(await c.next()).toEqual(
+    wire(3, "transcript", { messages: gateway.messages, running: true })
+  );
+});
+
+test("reconnecting with a recent cursor replays exactly the missed events, then goes live", async () => {
+  const gateway = new FakeGateway();
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+  for (const text of ["a", "b", "c"])
+    gateway.emit({ name: "delta", kind: "text", text });
+
+  const c = await resume(b, 2);
+  gateway.emit({ name: "delta", kind: "text", text: "d" });
+
+  for (const [seq, text] of [
+    [3, "b"],
+    [4, "c"],
+    [5, "d"],
+  ] as const)
+    expect(await c.next()).toEqual(wire(seq, "delta", { kind: "text", text }));
+});
+
+test("a cursor at the live seq replays nothing", async () => {
+  const gateway = new FakeGateway();
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+
+  const c = await resume(b, 1);
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+
+  expect(await c.next()).toMatchObject({ seq: 2, name: "runSettled" });
+});
+
+test("a cursor older than the replay window gets a snapshot instead", async () => {
+  const gateway = new FakeGateway();
+  const b = await bridge(undefined, gateway, 2);
+  gateway.emit({ name: "runStarted" });
+  for (const text of ["a", "b", "c", "d"])
+    gateway.emit({ name: "delta", kind: "text", text });
+
+  // Window holds seq 4 and 5: a cursor of 3 is still replayable, 2 is not.
+  const recent = await resume(b, 3);
+  expect(await recent.next()).toMatchObject({ seq: 4, name: "delta" });
+
+  const stale = await resume(b, 2);
+  expect(await stale.next()).toMatchObject({ seq: 5, name: "transcript" });
+});
+
+test("a cursor ahead of the bridge (bridge restarted) gets a snapshot", async () => {
+  const b = await bridge();
+
+  const c = await resume(b, 40);
+
+  expect(await c.next()).toMatchObject({ seq: 0, name: "transcript" });
 });

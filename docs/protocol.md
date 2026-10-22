@@ -33,8 +33,10 @@ A record that is not valid JSON or not a well-formed `command` → `error` recor
 ## Event ordering and replay
 
 - `seq` increases by 1 per event, across the bridge's lifetime.
-- On connect the app sends its last-seen `seq` (`lastSeq`, `0` if none); the bridge replays events with `seq > lastSeq`, then streams live.
-- If the cursor is no longer replayable, the bridge sends a `transcript` snapshot event instead.
+- On connect the app sends its last-seen `seq` (`lastSeq`, `0` if none; a missing or invalid value counts as `0`). Right after the `hello` result the bridge sends the catch-up, then streams live without gaps:
+  - `lastSeq` ≥ 1 and the bridge still retains every event after it (last 1000 by default) → exactly the events with `seq > lastSeq`.
+  - Otherwise — fresh client (`0`), cursor too old, or cursor ahead of the bridge's `seq` (bridge restarted) → one `transcript` snapshot instead.
+- The app adopts a `transcript` event as authoritative: it replaces everything it held and its `seq` becomes the new cursor. A snapshot does not consume a `seq`; it carries the `seq` of the latest event it reflects.
 
 ## Versioning
 
@@ -60,7 +62,7 @@ Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once the br
 
 ## Events
 
-`transcript`, `stats`: payloads to be specified by the issue that implements each. Run events, in the order a run emits them:
+`stats`: payload to be specified by the issue that implements it. Run events, in the order a run emits them:
 
 | `name`       | `data`                                                                                                           |
 | ------------ | ---------------------------------------------------------------------------------------------------------------- |
@@ -70,6 +72,10 @@ Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once the br
 | `runSettled` | `{ stopReason: "success" \| "error" \| "aborted", durationMs, errorMessage? }` — pi will not continue on its own |
 
 `durationMs` is measured by the bridge from `runStarted` to `runSettled`. `runStarted` is sent as soon as pi accepts a prompt. `stopReason` is `error` (with `errorMessage`) when the run's final assistant message failed, `aborted` when it was aborted, else `success`; failures a retry recovered from do not count.
+
+### `transcript`
+
+`{ messages, running }` — the whole conversation, oldest first. `messages` entries are `{ role: "user", text }` or `{ role: "assistant", text, thinking }` (completed messages; tool-only turns omitted). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active.
 
 ### `toolCall`
 
