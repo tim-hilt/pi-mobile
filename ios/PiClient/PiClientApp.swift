@@ -2,7 +2,9 @@ import SwiftUI
 
 @main
 struct PiClientApp: App {
+  @State private var client = BridgeClient()
+
   var body: some Scene {
-    WindowGroup { Text("pi") }
+    WindowGroup { ConnectionView(client: client, store: ConnectionStore()) }
   }
 }
