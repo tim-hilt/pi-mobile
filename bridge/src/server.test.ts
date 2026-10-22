@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import WebSocket from "ws";
+import { FakeGateway } from "./fakeGateway.js";
 import { PROTOCOL_VERSION } from "./protocol.js";
 import { startBridge, type Bridge } from "./server.js";
 
@@ -10,8 +11,16 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-async function bridge(pingIntervalMs?: number): Promise<Bridge> {
-  const b = await startBridge({ token: TOKEN, port: 0, pingIntervalMs });
+async function bridge(
+  pingIntervalMs?: number,
+  gateway = new FakeGateway()
+): Promise<Bridge> {
+  const b = await startBridge({
+    token: TOKEN,
+    port: 0,
+    pingIntervalMs,
+    gateway,
+  });
   cleanups.push(() => b.close());
   return b;
 }
@@ -169,4 +178,172 @@ test("one frame may carry several records", async () => {
 test("binds to localhost only", async () => {
   const b = await bridge();
   expect(b.host).toBe("127.0.0.1");
+});
+
+/** Connects and completes the handshake, leaving the connection ready for commands. */
+async function ready(b: Bridge) {
+  const c = await connect(b);
+  c.send(hello(1, PROTOCOL_VERSION));
+  await c.next();
+  return c;
+}
+
+const command = (id: number, name: string, params: object) =>
+  JSON.stringify({ type: "command", id, name, params }) + "\n";
+
+test("a prompt streams deltas, message end and run settled in order", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "prompt", { text: "hi" }));
+  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "delta", kind: "thinking", text: "hmm" });
+  gateway.emit({ name: "delta", kind: "text", text: "Hel" });
+  gateway.emit({ name: "delta", kind: "text", text: "lo" });
+  gateway.emit({ name: "messageEnd", text: "Hello", thinking: "hmm" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+
+  const events = [];
+  for (let i = 0; i < 6; i++) events.push(await c.next());
+  expect(events).toEqual([
+    { type: "event", seq: 1, name: "runStarted", data: {} },
+    {
+      type: "event",
+      seq: 2,
+      name: "delta",
+      data: { kind: "thinking", text: "hmm" },
+    },
+    {
+      type: "event",
+      seq: 3,
+      name: "delta",
+      data: { kind: "text", text: "Hel" },
+    },
+    {
+      type: "event",
+      seq: 4,
+      name: "delta",
+      data: { kind: "text", text: "lo" },
+    },
+    {
+      type: "event",
+      seq: 5,
+      name: "messageEnd",
+      data: { text: "Hello", thinking: "hmm" },
+    },
+    {
+      type: "event",
+      seq: 6,
+      name: "runSettled",
+      data: { stopReason: "success", durationMs: expect.any(Number) },
+    },
+  ]);
+  expect(gateway.prompts).toEqual(["hi"]);
+});
+
+test.each([
+  ["success", undefined],
+  ["error", "provider exploded"],
+  ["aborted", undefined],
+] as const)(
+  "run settled carries stop reason %s and the run's duration",
+  async (stopReason, errorMessage) => {
+    const gateway = new FakeGateway();
+    const c = await ready(await bridge(undefined, gateway));
+
+    gateway.emit({ name: "runStarted" });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    gateway.emit({ name: "runSettled", stopReason, errorMessage });
+
+    await c.next(); // runStarted
+    const settled = (await c.next()) as {
+      data: { stopReason: string; durationMs: number; errorMessage?: string };
+    };
+    expect(settled.data.stopReason).toBe(stopReason);
+    expect(settled.data.errorMessage).toBe(errorMessage);
+    expect(settled.data.durationMs).toBeGreaterThanOrEqual(25);
+    expect(settled.data.durationMs).toBeLessThan(1000);
+  }
+);
+
+test("during a run, a prompt routes as steer or follow-up per its mode", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+  c.send(command(2, "prompt", { text: "go" }));
+  await c.next();
+  gateway.emit({ name: "runStarted" });
+  await c.next();
+
+  c.send(command(3, "prompt", { text: "left", mode: "steer" }));
+  c.send(command(4, "prompt", { text: "later", mode: "followUp" }));
+  expect(await c.next()).toEqual({ type: "result", id: 3, result: {} });
+  expect(await c.next()).toEqual({ type: "result", id: 4, result: {} });
+
+  expect(gateway.prompts).toEqual(["go"]);
+  expect(gateway.steers).toEqual(["left"]);
+  expect(gateway.followUps).toEqual(["later"]);
+});
+
+test("during a run, a prompt without a mode is refused", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+  gateway.emit({ name: "runStarted" });
+  await c.next();
+
+  c.send(command(2, "prompt", { text: "ambiguous" }));
+
+  expect(await c.next()).toMatchObject({
+    type: "result",
+    id: 2,
+    error: { code: "runActive" },
+  });
+  expect(gateway.prompts).toEqual([]);
+});
+
+test("once a run has settled, a prompt starts a new run even with a mode", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+  await c.next();
+  await c.next();
+
+  c.send(command(2, "prompt", { text: "again", mode: "steer" }));
+  await c.next();
+
+  expect(gateway.prompts).toEqual(["again"]);
+  expect(gateway.steers).toEqual([]);
+});
+
+test("a gateway failure becomes an error result and the connection stays usable", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+  gateway.failNextWith = new Error("no model configured");
+
+  c.send(command(2, "prompt", { text: "hi" }));
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    error: { code: "sessionError", message: "no model configured" },
+  });
+
+  c.send(command(3, "prompt", { text: "retry" }));
+  expect(await c.next()).toEqual({ type: "result", id: 3, result: {} });
+});
+
+test.each([
+  ["missing text", {}],
+  ["non-string text", { text: 5 }],
+  ["unknown mode", { text: "x", mode: "shout" }],
+])("prompt with %s yields invalidParams", async (_n, params) => {
+  const c = await ready(await bridge());
+
+  c.send(command(2, "prompt", params));
+
+  expect(await c.next()).toMatchObject({
+    type: "result",
+    id: 2,
+    error: { code: "invalidParams" },
+  });
 });

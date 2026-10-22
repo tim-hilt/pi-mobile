@@ -46,10 +46,27 @@ A record that is not valid JSON or not a well-formed `command` → `error` recor
 
 After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloudflare drops idle sockets at ~100 s).
 
-## Commands (skeleton)
+## Commands
 
-`hello`, `prompt` (`mode`: `"steer"` | `"followUp"` | omitted), `abort`, `newSession`, `switchSession`, `getSessions`, `getStats`, `listSkills`, `searchFiles`. Params and results to be specified by the issue that implements each.
+`hello`, `prompt`, `abort`, `newSession`, `switchSession`, `getSessions`, `getStats`, `listSkills`, `searchFiles`. Only `hello` and `prompt` are specified so far; params and results of the rest are specified by the issue that implements each.
 
-## Events (skeleton)
+### `prompt`
 
-`transcript`, `delta` (text / thinking), `toolCall` (start / update / end), `messageEnd`, `runStarted`, `runSettled` (stop reason, timing), `stats`. Payloads to be specified by the issue that implements each.
+Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once the bridge has accepted the text.
+
+- Idle session: starts a run; `mode` is ignored.
+- Run active: `steer` delivers after the current assistant turn and its tool calls; `followUp` delivers after the run finishes its pending work. No `mode` → `error.code = "runActive"`.
+- Bad params → `error.code = "invalidParams"`. The session refusing the prompt → `error.code = "sessionError"` (connection stays usable).
+
+## Events
+
+`transcript`, `toolCall` (start / update / end), `stats`: payloads to be specified by the issue that implements each. Run events, in the order a run emits them:
+
+| `name`       | `data`                                                                                                           |
+| ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `runStarted` | `{}`                                                                                                             |
+| `delta`      | `{ kind: "text" \| "thinking", text }` — an increment to append                                                  |
+| `messageEnd` | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                  |
+| `runSettled` | `{ stopReason: "success" \| "error" \| "aborted", durationMs, errorMessage? }` — pi will not continue on its own |
+
+`durationMs` is measured by the bridge from `runStarted` to `runSettled`.

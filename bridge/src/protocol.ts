@@ -18,6 +18,7 @@ export interface Command {
 export type BridgeRecord =
   | { type: "result"; id: number; result: unknown }
   | { type: "result"; id: number; error: ProtocolError }
+  | { type: "event"; seq: number; name: string; data: Record<string, unknown> }
   /** Connection-level failure that cannot be tied to a command `id`; the socket is closed after it. */
   | { type: "error"; error: ProtocolError };
 

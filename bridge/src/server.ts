@@ -9,7 +9,10 @@ import {
   parseCommands,
   type BridgeRecord,
   type Command,
+  type ProtocolError,
 } from "./protocol.js";
+import type { SessionGateway } from "./gateway.js";
+import { CommandError, Session } from "./session.js";
 
 export interface BridgeOptions {
   /** Bearer token every request and WebSocket upgrade must present. */
@@ -18,6 +21,8 @@ export interface BridgeOptions {
   port: number;
   /** WebSocket ping interval after handshake. Defaults to 30 s (Cloudflare idle limit is ~100 s). */
   pingIntervalMs?: number;
+  /** The agent session this bridge exposes. */
+  gateway: SessionGateway;
 }
 
 export interface Bridge {
@@ -30,6 +35,8 @@ export interface Bridge {
 const HOST = "127.0.0.1";
 /** WebSocket close code for protocol violations (policy violation). */
 const CLOSE_PROTOCOL_VIOLATION = 1008;
+/** WebSocket close code for an unexpected bridge failure. */
+const CLOSE_INTERNAL_ERROR = 1011;
 
 /**
  * Starts the Bridge Protocol server (see docs/protocol.md): authenticates the
@@ -38,7 +45,8 @@ const CLOSE_PROTOCOL_VIOLATION = 1008;
  * the socket.
  */
 export async function startBridge(options: BridgeOptions): Promise<Bridge> {
-  const { token, port, pingIntervalMs = 30_000 } = options;
+  const { token, port, pingIntervalMs = 30_000, gateway } = options;
+  const session = new Session(gateway);
   const expected = Buffer.from(`Bearer ${token}`);
   const isAuthorized = (req: IncomingMessage): boolean => {
     const given = Buffer.from(req.headers.authorization ?? "");
@@ -56,7 +64,9 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
       socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws) => serve(ws, pingIntervalMs));
+    wss.handleUpgrade(req, socket, head, (ws) =>
+      serve(ws, pingIntervalMs, session)
+    );
   });
 
   await new Promise<void>((resolve) => http.listen(port, HOST, resolve));
@@ -68,14 +78,16 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
     async close() {
       for (const ws of wss.clients) ws.terminate();
       wss.close();
+      session.close();
       await new Promise<void>((resolve) => http.close(() => resolve()));
     },
   };
 }
 
 /** Drives one authenticated connection: handshake first, then commands. */
-function serve(ws: WebSocket, pingIntervalMs: number): void {
+function serve(ws: WebSocket, pingIntervalMs: number, session: Session): void {
   let pinger: NodeJS.Timeout | undefined;
+  let unsubscribe: (() => void) | undefined;
   let handshaken = false;
 
   const send = (record: BridgeRecord) => ws.send(encode(record));
@@ -84,16 +96,49 @@ function serve(ws: WebSocket, pingIntervalMs: number): void {
     ws.close(CLOSE_PROTOCOL_VIOLATION);
   };
 
-  const handle = (command: Command): boolean => {
+  /** Returns false if the connection was rejected. */
+  const handle = async (command: Command): Promise<boolean> => {
     if (!handshaken) return handshake(command);
-    send({
-      type: "result",
-      id: command.id,
-      error: {
-        code: "unknownCommand",
-        message: `unknown command "${command.name}"`,
-      },
-    });
+    const { id, name, params } = command;
+    const reply = (outcome: { result: unknown } | { error: ProtocolError }) =>
+      send({ type: "result", id, ...outcome });
+    switch (name) {
+      case "prompt": {
+        const { text, mode } = params;
+        if (
+          typeof text !== "string" ||
+          (mode !== undefined && mode !== "steer" && mode !== "followUp")
+        ) {
+          reply({
+            error: {
+              code: "invalidParams",
+              message:
+                'prompt requires string text and mode "steer" | "followUp"',
+            },
+          });
+          break;
+        }
+        try {
+          await session.prompt(text, mode);
+          reply({ result: {} });
+        } catch (e) {
+          reply({
+            error:
+              e instanceof CommandError
+                ? { code: e.code, message: e.message }
+                : { code: "sessionError", message: errorMessage(e) },
+          });
+        }
+        break;
+      }
+      default:
+        reply({
+          error: {
+            code: "unknownCommand",
+            message: `unknown command "${name}"`,
+          },
+        });
+    }
     return true;
   };
 
@@ -133,22 +178,37 @@ function serve(ws: WebSocket, pingIntervalMs: number): void {
     handshaken = true;
     send({ type: "result", id, result: { protocolVersion: PROTOCOL_VERSION } });
     pinger = setInterval(() => ws.ping(), pingIntervalMs);
+    unsubscribe = session.subscribe((event) =>
+      send({ type: "event", ...event })
+    );
     return true;
   };
 
+  // Commands run strictly one after another so results keep command order.
+  let queue = Promise.resolve();
   ws.on("message", (data: RawData) => {
-    let commands: Command[];
-    try {
-      commands = parseCommands(data.toString());
-    } catch (e) {
-      if (!(e instanceof MalformedRecordError)) throw e;
-      reject({
-        type: "error",
-        error: { code: "malformedRecord", message: e.message },
-      });
-      return;
-    }
-    for (const command of commands) if (!handle(command)) return;
+    queue = queue
+      .then(async () => {
+        let commands: Command[];
+        try {
+          commands = parseCommands(data.toString());
+        } catch (e) {
+          if (!(e instanceof MalformedRecordError)) throw e;
+          reject({
+            type: "error",
+            error: { code: "malformedRecord", message: e.message },
+          });
+          return;
+        }
+        for (const command of commands) if (!(await handle(command))) return;
+      })
+      .catch(() => ws.close(CLOSE_INTERNAL_ERROR));
   });
-  ws.on("close", () => clearInterval(pinger));
+  ws.on("close", () => {
+    clearInterval(pinger);
+    unsubscribe?.();
+  });
 }
+
+const errorMessage = (e: unknown): string =>
+  e instanceof Error ? e.message : String(e);
