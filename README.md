@@ -25,4 +25,10 @@ cd ios && xcodegen generate   # after editing project.yml
 xcodebuild test -scheme PiClient -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
 ```
 
+Run the bridge against a real pi session in the current directory:
+
+```sh
+PI_BRIDGE_TOKEN=secret npm start -w bridge   # PI_BRIDGE_PORT defaults to 8787
+```
+
 Pre-commit runs Prettier, typecheck, and bridge tests; failure blocks the commit.

@@ -60,7 +60,7 @@ Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once the br
 
 ## Events
 
-`transcript`, `toolCall` (start / update / end), `stats`: payloads to be specified by the issue that implements each. Run events, in the order a run emits them:
+`transcript`, `stats`: payloads to be specified by the issue that implements each. Run events, in the order a run emits them:
 
 | `name`       | `data`                                                                                                           |
 | ------------ | ---------------------------------------------------------------------------------------------------------------- |
@@ -69,4 +69,14 @@ Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once the br
 | `messageEnd` | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                  |
 | `runSettled` | `{ stopReason: "success" \| "error" \| "aborted", durationMs, errorMessage? }` — pi will not continue on its own |
 
-`durationMs` is measured by the bridge from `runStarted` to `runSettled`.
+`durationMs` is measured by the bridge from `runStarted` to `runSettled`. `runStarted` is sent as soon as pi accepts a prompt. `stopReason` is `error` (with `errorMessage`) when the run's final assistant message failed, `aborted` when it was aborted, else `success`; failures a retry recovered from do not count.
+
+### `toolCall`
+
+One event per phase of a tool execution; all carry `toolCallId` and `toolName`. `output` is the tool's text (non-text content is dropped).
+
+| `phase`  | other `data`                                                      |
+| -------- | ----------------------------------------------------------------- |
+| `start`  | `args`                                                            |
+| `update` | `output` — output so far (replaces earlier updates)               |
+| `end`    | `output`, `isError`, `durationMs?` (absent if the tool never ran) |

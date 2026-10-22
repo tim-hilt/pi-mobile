@@ -27,5 +27,31 @@ export type GatewayEvent =
   | { name: "delta"; kind: "text" | "thinking"; text: string }
   /** The authoritative completed assistant message; supersedes the deltas that built it. */
   | { name: "messageEnd"; text: string; thinking: string }
+  /** One tool execution; `output` is the tool's text, with non-text content dropped. */
+  | {
+      name: "toolCall";
+      phase: "start";
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    }
+  | {
+      name: "toolCall";
+      phase: "update";
+      toolCallId: string;
+      toolName: string;
+      /** Output so far (replaces earlier updates, not an increment). */
+      output: string;
+    }
+  | {
+      name: "toolCall";
+      phase: "end";
+      toolCallId: string;
+      toolName: string;
+      output: string;
+      isError: boolean;
+      /** Absent when the tool never ran. */
+      durationMs?: number;
+    }
   /** Pi will not continue on its own. `errorMessage` accompanies `error`. */
   | { name: "runSettled"; stopReason: StopReason; errorMessage?: string };

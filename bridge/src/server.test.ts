@@ -242,6 +242,53 @@ test("a prompt streams deltas, message end and run settled in order", async () =
   expect(gateway.prompts).toEqual(["hi"]);
 });
 
+test("a tool call goes on the wire as toolCall events keyed by phase", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+
+  gateway.emit({
+    name: "toolCall",
+    phase: "start",
+    toolCallId: "t1",
+    toolName: "bash",
+    args: { command: "ls" },
+  });
+  gateway.emit({
+    name: "toolCall",
+    phase: "end",
+    toolCallId: "t1",
+    toolName: "bash",
+    output: "a.txt\n",
+    isError: false,
+    durationMs: 12,
+  });
+
+  expect(await c.next()).toEqual({
+    type: "event",
+    seq: 1,
+    name: "toolCall",
+    data: {
+      phase: "start",
+      toolCallId: "t1",
+      toolName: "bash",
+      args: { command: "ls" },
+    },
+  });
+  expect(await c.next()).toEqual({
+    type: "event",
+    seq: 2,
+    name: "toolCall",
+    data: {
+      phase: "end",
+      toolCallId: "t1",
+      toolName: "bash",
+      output: "a.txt\n",
+      isError: false,
+      durationMs: 12,
+    },
+  });
+});
+
 test.each([
   ["success", undefined],
   ["error", "provider exploded"],
