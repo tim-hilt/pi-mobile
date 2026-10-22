@@ -1,5 +1,6 @@
 import type {
   GatewayEvent,
+  QueuedMessages,
   SessionGateway,
   TranscriptMessage,
 } from "./gateway.js";
@@ -11,7 +12,10 @@ export class FakeGateway implements SessionGateway {
   readonly followUps: string[] = [];
   /** What `transcript()` reports; tests set it to the history they want snapshotted. */
   messages: TranscriptMessage[] = [];
-  /** When set, the next call to any prompt method rejects with it. */
+  aborts = 0;
+  /** What `queue()` reports; tests set it to the pending messages they want snapshotted. */
+  pending: QueuedMessages = { steering: [], followUp: [] };
+  /** When set, the next call to `prompt`, `steer`, `followUp` or `abort` rejects with it. */
   failNextWith: Error | undefined;
 
   private listeners = new Set<(event: GatewayEvent) => void>();
@@ -19,6 +23,21 @@ export class FakeGateway implements SessionGateway {
   prompt = (text: string) => this.accept(this.prompts, text);
   steer = (text: string) => this.accept(this.steers, text);
   followUp = (text: string) => this.accept(this.followUps, text);
+
+  abort = async () => {
+    this.throwIfFailing();
+    this.aborts++;
+  };
+
+  queue = () => this.pending;
+
+  /** Like pi, announces the now-empty queue. */
+  clearQueue = () => {
+    const cleared = this.pending;
+    this.pending = { steering: [], followUp: [] };
+    this.emit({ name: "queue", ...this.pending });
+    return cleared;
+  };
 
   transcript = () => this.messages;
 
@@ -33,9 +52,13 @@ export class FakeGateway implements SessionGateway {
   }
 
   private async accept(into: string[], text: string): Promise<void> {
+    this.throwIfFailing();
+    into.push(text);
+  }
+
+  private throwIfFailing(): void {
     const failure = this.failNextWith;
     this.failNextWith = undefined;
     if (failure) throw failure;
-    into.push(text);
   }
 }

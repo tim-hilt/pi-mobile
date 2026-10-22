@@ -50,6 +50,16 @@ struct Transcript: Equatable, Sendable {
     let errorMessage: String?
   }
 
+  /// Messages sent during a run that the agent has not taken in yet, oldest first.
+  struct Queue: Equatable, Sendable {
+    /// Waiting for the current assistant turn to finish.
+    var steering: [String] = []
+    /// Waiting for the run to finish.
+    var followUp: [String] = []
+
+    var isEmpty: Bool { steering.isEmpty && followUp.isEmpty }
+  }
+
   enum Entry: Equatable, Identifiable, Sendable {
     case message(Message)
     case toolCall(ToolCall)
@@ -68,6 +78,8 @@ struct Transcript: Equatable, Sendable {
   /// When the active run began, or nil when idle. For a run joined midway it is reconstructed
   /// from the snapshot; a run replayed after a reconnect is dated from its replay.
   private(set) var runStartedAt: Date?
+  /// What is waiting to be delivered to the agent.
+  private(set) var queue = Queue()
   /// `seq` of the newest event applied; 0 before any.
   private(set) var lastSeq = 0
 
@@ -87,9 +99,12 @@ struct Transcript: Equatable, Sendable {
     let data = record.data
     if name == "transcript" {
       replaceAll(with: data?.messages ?? [], runningFor: data?.running == true ? data?.elapsedMs ?? 0 : nil, now: now)
+      queue = Queue(data)
     } else if seq > lastSeq {
       switch name {
       case "runStarted": runStartedAt = now
+      case "userMessage": entries.append(.message(makeMessage(.user, text: data?.text ?? "", thinking: "")))
+      case "queue": queue = Queue(data)
       case "delta": appendDelta(kind: data?.kind, text: data?.text ?? "")
       case "messageEnd": finishMessage(text: data?.text ?? "", thinking: data?.thinking ?? "")
       case "toolCall": if let data { applyToolCall(data) }
@@ -194,5 +209,12 @@ struct Transcript: Equatable, Sendable {
   ) -> Message {
     defer { nextId += 1 }
     return Message(id: nextId, role: role, text: text, thinking: thinking, isStreaming: isStreaming)
+  }
+}
+
+extension Transcript.Queue {
+  /// The queue a `queue` event or `transcript` snapshot describes; absent lists are empty.
+  fileprivate init(_ data: Record.EventData?) {
+    self.init(steering: data?.steering ?? [], followUp: data?.followUp ?? [])
   }
 }

@@ -7,8 +7,19 @@ enum BridgeProtocol {
 
   /// Newline-terminated `hello` command: the mandatory first record of a connection.
   static func helloFrame(id: Int, lastSeq: Int) -> String {
-    #"{"type":"command","id":\#(id),"name":"hello","params":{"protocolVersion":\#(version),"lastSeq":\#(lastSeq)}}"#
-      + "\n"
+    commandFrame(id: id, name: "hello", params: ["protocolVersion": .number(Double(version)), "lastSeq": .number(Double(lastSeq))])
+  }
+
+  /// Newline-terminated `command` record.
+  static func commandFrame(id: Int, name: String, params: [String: JSONValue] = [:]) -> String {
+    struct Command: Encodable {
+      let type = "command"
+      let id: Int
+      let name: String
+      let params: [String: JSONValue]
+    }
+    let json = try? JSONEncoder().encode(Command(id: id, name: name, params: params))
+    return (json.flatMap { String(data: $0, encoding: .utf8) } ?? "") + "\n"
   }
 
   /// Splits one text frame into its records. Throws if any record is not valid JSON.
@@ -18,9 +29,11 @@ enum BridgeProtocol {
 }
 
 /// `error` payload of `result` records and top-level `error` records.
-struct ProtocolError: Codable, Equatable, Sendable {
+struct ProtocolError: Codable, Equatable, Sendable, LocalizedError {
   let code: String
   let message: String
+
+  var errorDescription: String? { message }
 }
 
 /// A bridge → app record. Only the fields the app currently reads are decoded.
@@ -30,25 +43,38 @@ struct Record: Decodable, Sendable {
   /// Echoed command id (`result` only).
   let id: Int?
   let error: ProtocolError?
-  /// `hello` result payload.
-  let result: HelloResult?
+  /// `result` payload; each command sets its own subset.
+  let result: CommandResult?
   /// Event sequence number (`event` only).
   let seq: Int?
   /// Event name, e.g. `delta` (`event` only).
   let name: String?
   let data: EventData?
 
-  struct HelloResult: Decodable, Sendable {
+  struct CommandResult: Decodable, Sendable {
+    /// `hello`.
     let protocolVersion: Int?
+    /// `clearQueue`: the texts dropped.
+    let steering: [String]?
+    let followUp: [String]?
+
+    init(protocolVersion: Int? = nil, steering: [String]? = nil, followUp: [String]? = nil) {
+      self.protocolVersion = protocolVersion
+      self.steering = steering
+      self.followUp = followUp
+    }
   }
 
   /// Union of the `data` fields of the events the app renders; each event sets its own subset.
   struct EventData: Decodable, Sendable {
     /// `delta`: `text` or `thinking`.
     let kind: String?
-    /// `delta` increment, or `messageEnd` authoritative text.
+    /// `delta` increment, `messageEnd` authoritative text, or `userMessage` text.
     let text: String?
     let thinking: String?
+    /// `queue` event and `transcript` snapshot: the messages waiting to be delivered.
+    let steering: [String]?
+    let followUp: [String]?
     /// `transcript` snapshot.
     let messages: [WireMessage]?
     let running: Bool?

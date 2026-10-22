@@ -20,6 +20,14 @@ enum ConnectionState: Equatable, Sendable {
   case failed(ProtocolError)
 }
 
+/// How a prompt sent during a run reaches the agent. Ignored by the bridge when no run is active.
+enum PromptMode: String, Sendable {
+  /// After the current assistant turn and its tool calls.
+  case steer
+  /// After the run has finished its pending work.
+  case followUp
+}
+
 /// Owns the connection to the bridge and publishes its `state` and the synced `transcript`.
 ///
 /// Both are pushed by the client as the socket progresses (observe them with SwiftUI or
@@ -27,13 +35,28 @@ enum ConnectionState: Equatable, Sendable {
 /// Once connected, a dropped or unreachable socket is retried with exponential backoff, resuming
 /// from the transcript's replay cursor; only a refusal by the bridge (`failed`) or `disconnect`
 /// ends the attempts.
+///
+/// Commands (`send`, `abort`, `clearQueue`) are async: they return once the bridge has answered
+/// and throw its `ProtocolError`, or `CommandError` if the connection is not usable. Their effects
+/// show up in `transcript` through the events the bridge streams, never through the return value.
 @MainActor @Observable
 final class BridgeClient {
   private(set) var state = ConnectionState.offline
   /// Everything synced from the bridge so far; kept across reconnects to the same bridge.
   private(set) var transcript = Transcript()
 
+  /// Why a command could not be answered.
+  enum CommandError: Error, Equatable {
+    /// Not `connected`, or the socket ended before the bridge answered.
+    case notConnected
+  }
+
   @ObservationIgnored private var connection: Task<Void, Never>?
+  /// The socket of the live connection; nil between connections.
+  @ObservationIgnored private var socket: URLSessionWebSocketTask?
+  /// Commands sent on `socket` still waiting for their `result`, by command id.
+  @ObservationIgnored private var pending: [Int: CheckedContinuation<Record.CommandResult, Error>] = [:]
+  @ObservationIgnored private var nextCommandId = 2
   @ObservationIgnored private var config: BridgeConfig?
   @ObservationIgnored private let reconnectDelay: Duration
 
@@ -46,6 +69,7 @@ final class BridgeClient {
 
   func connect(to config: BridgeConfig) {
     connection?.cancel()
+    failPending()
     // A transcript and its cursor belong to one bridge; never replay another's.
     if config != self.config { transcript = Transcript() }
     self.config = config
@@ -56,7 +80,54 @@ final class BridgeClient {
   func disconnect() {
     connection?.cancel()
     connection = nil
+    failPending()
     state = .offline
+  }
+
+  /// Sends `text` to the agent: it starts a run when idle, else is delivered as `mode` says.
+  func send(_ text: String, mode: PromptMode = .steer) async throws {
+    _ = try await command("prompt", ["text": .string(text), "mode": .string(mode.rawValue)])
+  }
+
+  /// Stops the active run; its transcript then shows it as aborted.
+  func abort() async throws {
+    _ = try await command("abort")
+  }
+
+  /// Drops every queued message and returns what was dropped, e.g. to put back in the composer.
+  func clearQueue() async throws -> Transcript.Queue {
+    let result = try await command("clearQueue")
+    return Transcript.Queue(steering: result.steering ?? [], followUp: result.followUp ?? [])
+  }
+
+  private func command(_ name: String, _ params: [String: JSONValue] = [:]) async throws -> Record.CommandResult {
+    guard state == .connected, let socket else { throw CommandError.notConnected }
+    let id = nextCommandId
+    nextCommandId += 1
+    let frame = BridgeProtocol.commandFrame(id: id, name: name, params: params)
+    return try await withCheckedThrowingContinuation { continuation in
+      pending[id] = continuation
+      // The completion form enqueues synchronously, so commands reach the bridge in call order.
+      socket.send(.string(frame)) { error in
+        guard let error else { return }
+        Task { @MainActor in self.pending.removeValue(forKey: id)?.resume(throwing: error) }
+      }
+    }
+  }
+
+  private func failPending() {
+    for continuation in pending.values { continuation.resume(throwing: CommandError.notConnected) }
+    pending.removeAll()
+  }
+
+  /// Completes the command a `result` record answers.
+  private func resolve(_ record: Record) {
+    guard record.type == "result", let id = record.id, let continuation = pending.removeValue(forKey: id) else { return }
+    if let error = record.error {
+      continuation.resume(throwing: error)
+    } else {
+      continuation.resume(returning: record.result ?? Record.CommandResult())
+    }
   }
 
   /// Keeps a socket open until the bridge refuses us or the task is cancelled.
@@ -86,7 +157,16 @@ final class BridgeClient {
     request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
     let socket = URLSession.shared.webSocketTask(with: request)
     socket.resume()
-    defer { socket.cancel(with: .goingAway, reason: nil) }
+    self.socket = socket
+    nextCommandId = 2
+    defer {
+      socket.cancel(with: .goingAway, reason: nil)
+      // A superseding connection may already own `socket` and `pending`.
+      if self.socket === socket {
+        self.socket = nil
+        failPending()
+      }
+    }
 
     let helloId = 1
     var wasConnected = false
@@ -98,6 +178,7 @@ final class BridgeClient {
         for record in try BridgeProtocol.records(in: frame) {
           guard !Task.isCancelled else { return .dropped(wasConnected: wasConnected) }
           transcript.apply(record)
+          resolve(record)
           if let next = Self.transition(on: record, helloId: helloId) {
             state = next
             if case .failed = next { return .refused }

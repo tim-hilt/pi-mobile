@@ -17,6 +17,9 @@ class FakePiSession implements PiSession {
   messages: AgentSession["messages"] = [];
   readonly steers: string[] = [];
   readonly followUps: string[] = [];
+  steeringQueue: string[] = [];
+  followUpQueue: string[] = [];
+  aborts = 0;
   disposed = false;
   /** When set, `prompt` rejects with it before the prompt is accepted. */
   rejectWith: Error | undefined;
@@ -37,6 +40,20 @@ class FakePiSession implements PiSession {
   followUp = async (text: string) => {
     this.followUps.push(text);
     return "queued" as const;
+  };
+  abort = async () => {
+    this.aborts++;
+  };
+  getSteeringMessages = () => this.steeringQueue;
+  getFollowUpMessages = () => this.followUpQueue;
+  clearQueue = () => {
+    const cleared = {
+      steering: this.steeringQueue,
+      followUp: this.followUpQueue,
+    };
+    this.steeringQueue = [];
+    this.followUpQueue = [];
+    return cleared;
   };
   subscribe = (listener: AgentSessionEventListener) => {
     this.listeners.add(listener);
@@ -112,15 +129,65 @@ test("a completed assistant message carries its full text and thinking", async (
       { type: "text", text: " world" },
     ])
   );
-  // Only assistant messages are answers; the echoed user prompt is not.
-  pi.emit({
-    type: "message_end",
-    message: { role: "user", content: "hi" },
-  });
 
   expect(events).toEqual([
     { name: "messageEnd", text: "Hello world", thinking: "plan" },
   ]);
+});
+
+test("a user message entering the conversation surfaces as its text", async () => {
+  const { pi, gateway, events } = setup();
+  await gateway.prompt("hi");
+  events.length = 0;
+
+  pi.emit({ type: "message_end", message: { role: "user", content: "hi" } });
+  pi.emit({
+    type: "message_end",
+    message: {
+      role: "user",
+      content: [
+        { type: "text", text: "steer" },
+        { type: "image", data: "…", mimeType: "image/png" },
+        { type: "text", text: "ing" },
+      ],
+    },
+  });
+
+  expect(events).toEqual([
+    { name: "userMessage", text: "hi" },
+    { name: "userMessage", text: "steering" },
+  ]);
+});
+
+test("pi's queue updates surface as queue events", async () => {
+  const { pi, events } = setup();
+
+  pi.emit({ type: "queue_update", steering: ["left"], followUp: ["later"] });
+
+  expect(events).toEqual([
+    { name: "queue", steering: ["left"], followUp: ["later"] },
+  ]);
+});
+
+test("the queue and its clearing are read through to pi", () => {
+  const { pi, gateway } = setup();
+  pi.steeringQueue = ["left"];
+  pi.followUpQueue = ["later"];
+
+  expect(gateway.queue()).toEqual({ steering: ["left"], followUp: ["later"] });
+  expect(gateway.clearQueue()).toEqual({
+    steering: ["left"],
+    followUp: ["later"],
+  });
+  expect(gateway.queue()).toEqual({ steering: [], followUp: [] });
+});
+
+test("abort is forwarded to pi", async () => {
+  const { pi, gateway } = setup();
+
+  await gateway.abort();
+
+  expect(pi.aborts).toBe(1);
 });
 
 test("pi's tool executions surface as tool-call events", async () => {

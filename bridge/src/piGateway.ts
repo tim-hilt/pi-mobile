@@ -4,6 +4,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type {
   GatewayEvent,
+  QueuedMessages,
   SessionGateway,
   TranscriptMessage,
 } from "./gateway.js";
@@ -11,7 +12,16 @@ import type {
 /** The slice of pi's `AgentSession` the bridge relies on. */
 export type PiSession = Pick<
   AgentSession,
-  "prompt" | "steer" | "followUp" | "subscribe" | "dispose" | "messages"
+  | "prompt"
+  | "steer"
+  | "followUp"
+  | "abort"
+  | "clearQueue"
+  | "getSteeringMessages"
+  | "getFollowUpMessages"
+  | "subscribe"
+  | "dispose"
+  | "messages"
 >;
 
 /**
@@ -61,15 +71,26 @@ export class PiGateway implements SessionGateway {
     await this.session.followUp(text, undefined, { source: "rpc" });
   }
 
+  abort(): Promise<void> {
+    return this.session.abort();
+  }
+
+  queue(): QueuedMessages {
+    return {
+      steering: [...this.session.getSteeringMessages()],
+      followUp: [...this.session.getFollowUpMessages()],
+    };
+  }
+
+  clearQueue(): QueuedMessages {
+    return this.session.clearQueue();
+  }
+
   transcript(): TranscriptMessage[] {
     const history: TranscriptMessage[] = [];
     for (const message of this.session.messages) {
       if (message.role === "user") {
-        const text =
-          typeof message.content === "string"
-            ? message.content
-            : joinBlocks(message.content, "text");
-        history.push({ role: "user", text });
+        history.push({ role: "user", text: userText(message.content) });
       } else if (message.role === "assistant") {
         const text = joinBlocks(message.content, "text");
         const thinking = joinBlocks(message.content, "thinking");
@@ -116,6 +137,8 @@ export class PiGateway implements SessionGateway {
       }
       case "message_end": {
         const message = event.message;
+        if (message.role === "user")
+          this.emit({ name: "userMessage", text: userText(message.content) });
         if (message.role !== "assistant") break;
         this.lastAssistant = message;
         this.emit({
@@ -125,6 +148,13 @@ export class PiGateway implements SessionGateway {
         });
         break;
       }
+      case "queue_update":
+        this.emit({
+          name: "queue",
+          steering: [...event.steering],
+          followUp: [...event.followUp],
+        });
+        break;
       case "tool_execution_start":
         this.emit({
           name: "toolCall",
@@ -186,6 +216,13 @@ export class PiGateway implements SessionGateway {
   private emit(event: GatewayEvent): void {
     for (const listener of this.listeners) listener(event);
   }
+}
+
+/** The text of a user message, whose content is a plain string or blocks (images dropped). */
+function userText(
+  content: string | ReadonlyArray<{ type: string; text?: string }>
+): string {
+  return typeof content === "string" ? content : joinBlocks(content, "text");
 }
 
 /** Concatenates the `kind` blocks of a message's content (`text` or `thinking`). */

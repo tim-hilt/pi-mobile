@@ -110,6 +110,19 @@ function serve(ws: WebSocket, pingIntervalMs: number, session: Session): void {
     const { id, name, params } = command;
     const reply = (outcome: { result: unknown } | { error: ProtocolError }) =>
       send({ type: "result", id, ...outcome });
+    /** Replies with `action`'s result, or with its failure; the connection stays usable. */
+    const respond = async (action: () => Promise<unknown>) => {
+      try {
+        reply({ result: await action() });
+      } catch (e) {
+        reply({
+          error:
+            e instanceof CommandError
+              ? { code: e.code, message: e.message }
+              : { code: "sessionError", message: errorMessage(e) },
+        });
+      }
+    };
     switch (name) {
       case "prompt": {
         const { text, mode } = params;
@@ -126,19 +139,21 @@ function serve(ws: WebSocket, pingIntervalMs: number, session: Session): void {
           });
           break;
         }
-        try {
+        await respond(async () => {
           await session.prompt(text, mode);
-          reply({ result: {} });
-        } catch (e) {
-          reply({
-            error:
-              e instanceof CommandError
-                ? { code: e.code, message: e.message }
-                : { code: "sessionError", message: errorMessage(e) },
-          });
-        }
+          return {};
+        });
         break;
       }
+      case "abort":
+        await respond(async () => {
+          await session.abort();
+          return {};
+        });
+        break;
+      case "clearQueue":
+        await respond(async () => session.clearQueue());
+        break;
       default:
         reply({
           error: {

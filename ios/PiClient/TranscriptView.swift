@@ -1,10 +1,17 @@
 import SwiftUI
 
-/// The synced conversation, newest at the bottom.
+/// The synced conversation, newest at the bottom, with the composer below it.
 struct TranscriptView: View {
   let client: BridgeClient
 
   var body: some View {
+    VStack(spacing: 0) {
+      conversation
+      ComposerView(client: client)
+    }
+  }
+
+  @ViewBuilder private var conversation: some View {
     let transcript = client.transcript
     if transcript.entries.isEmpty && !transcript.isRunning {
       ContentUnavailableView(

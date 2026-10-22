@@ -431,7 +431,12 @@ test("a fresh connect gets a transcript snapshot at the current seq", async () =
   const c = await resume(b, 0);
 
   expect(await c.next()).toEqual(
-    wire(2, "transcript", { messages: gateway.messages, running: false })
+    wire(2, "transcript", {
+      messages: gateway.messages,
+      running: false,
+      steering: [],
+      followUp: [],
+    })
   );
 });
 
@@ -453,6 +458,8 @@ test("a snapshot taken mid-run includes the message still streaming", async () =
       ],
       running: true,
       elapsedMs: expect.any(Number),
+      steering: [],
+      followUp: [],
     })
   );
 
@@ -499,6 +506,8 @@ test("a snapshot never repeats a message that already ended", async () => {
       messages: gateway.messages,
       running: true,
       elapsedMs: expect.any(Number),
+      steering: [],
+      followUp: [],
     })
   );
 });
@@ -553,4 +562,79 @@ test("a cursor ahead of the bridge (bridge restarted) gets a snapshot", async ()
   const c = await resume(b, 40);
 
   expect(await c.next()).toMatchObject({ seq: 0, name: "transcript" });
+});
+
+test("abort stops the active run via the gateway", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+  gateway.emit({ name: "runStarted" });
+  await c.next();
+
+  c.send(command(2, "abort", {}));
+
+  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
+  expect(gateway.aborts).toBe(1);
+});
+
+test("a gateway failure while aborting becomes an error result", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+  gateway.failNextWith = new Error("stuck");
+
+  c.send(command(2, "abort", {}));
+
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    error: { code: "sessionError", message: "stuck" },
+  });
+});
+
+test("queue changes stream as events", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+
+  gateway.emit({ name: "queue", steering: ["left"], followUp: ["later"] });
+
+  expect(await c.next()).toEqual(
+    wire(1, "queue", { steering: ["left"], followUp: ["later"] })
+  );
+});
+
+test("a snapshot lists the messages still queued", async () => {
+  const gateway = new FakeGateway();
+  gateway.pending = { steering: ["left"], followUp: ["later"] };
+  const c = await resume(await bridge(undefined, gateway), 0);
+
+  expect(await c.next()).toMatchObject({
+    name: "transcript",
+    data: { steering: ["left"], followUp: ["later"] },
+  });
+});
+
+test("clearQueue drops every queued message and returns them", async () => {
+  const gateway = new FakeGateway();
+  gateway.pending = { steering: ["left"], followUp: ["later"] };
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "clearQueue", {}));
+
+  expect(await c.next()).toEqual(
+    wire(1, "queue", { steering: [], followUp: [] })
+  );
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    result: { steering: ["left"], followUp: ["later"] },
+  });
+  expect(gateway.pending).toEqual({ steering: [], followUp: [] });
+});
+
+test("a user message entering the transcript streams as an event", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+
+  gateway.emit({ name: "userMessage", text: "hi" });
+
+  expect(await c.next()).toEqual(wire(1, "userMessage", { text: "hi" }));
 });

@@ -14,6 +14,12 @@ export interface SessionGateway {
   steer(text: string): Promise<void>;
   /** Queues `text` to be delivered once the active run has finished its pending work. */
   followUp(text: string): Promise<void>;
+  /** Stops the active run, if any; the run then settles as `aborted`. Queued messages stay queued. */
+  abort(): Promise<void>;
+  /** The messages queued by `steer`/`followUp` that pi has not yet taken in. */
+  queue(): QueuedMessages;
+  /** Drops every queued message and returns what was dropped. */
+  clearQueue(): QueuedMessages;
   /**
    * The session's completed messages, oldest first: the authoritative history
    * behind a catch-up snapshot. Excludes a message still being generated.
@@ -21,6 +27,12 @@ export interface SessionGateway {
   transcript(): TranscriptMessage[];
   /** Registers `listener` for session events; returns the unsubscribe function. */
   subscribe(listener: (event: GatewayEvent) => void): () => void;
+}
+
+/** Texts waiting to enter the run, oldest first. */
+export interface QueuedMessages {
+  steering: string[];
+  followUp: string[];
 }
 
 /** A completed conversation message as the app shows it. */
@@ -34,6 +46,10 @@ export type StopReason = "success" | "error" | "aborted" | "length";
 /** Session events in the order pi emits them for one run. */
 export type GatewayEvent =
   | { name: "runStarted" }
+  /** A user message entered the conversation: the prompt itself, or a steer/follow-up pi took in. */
+  | { name: "userMessage"; text: string }
+  /** The pending queue changed; carries its full new contents. */
+  | ({ name: "queue" } & QueuedMessages)
   | { name: "delta"; kind: "text" | "thinking"; text: string }
   /** The authoritative completed assistant message; supersedes the deltas that built it. */
   | { name: "messageEnd"; text: string; thinking: string }

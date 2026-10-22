@@ -1,4 +1,8 @@
-import type { GatewayEvent, SessionGateway } from "./gateway.js";
+import type {
+  GatewayEvent,
+  QueuedMessages,
+  SessionGateway,
+} from "./gateway.js";
 
 /** A bridge → app event as it goes on the wire, minus the `type` discriminator. */
 export interface BridgeEvent {
@@ -85,6 +89,16 @@ export class Session {
     );
   }
 
+  /** Stops the active run; a no-op when idle. Rejects with the gateway's own error if it fails. */
+  abort(): Promise<void> {
+    return this.gateway.abort();
+  }
+
+  /** Drops every queued message and returns the dropped texts. */
+  clearQueue(): QueuedMessages {
+    return this.gateway.clearQueue();
+  }
+
   close(): void {
     this.detach();
     this.listeners.clear();
@@ -103,6 +117,7 @@ export class Session {
       data: {
         messages,
         running,
+        ...this.gateway.queue(),
         // The app has no other way to learn when a run it joined midway began.
         ...(running && {
           elapsedMs: Math.round(performance.now() - startedAt),

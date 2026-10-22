@@ -50,7 +50,7 @@ After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloud
 
 ## Commands
 
-`hello`, `prompt`, `abort`, `newSession`, `switchSession`, `getSessions`, `getStats`, `listSkills`, `searchFiles`. Only `hello` and `prompt` are specified so far; params and results of the rest are specified by the issue that implements each.
+`hello`, `prompt`, `abort`, `newSession`, `switchSession`, `getSessions`, `getStats`, `listSkills`, `searchFiles`. Only `hello`, `prompt`, `abort` and `clearQueue` are specified so far; params and results of the rest are specified by the issue that implements each.
 
 ### `prompt`
 
@@ -60,22 +60,32 @@ Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once the br
 - Run active: `steer` delivers after the current assistant turn and its tool calls; `followUp` delivers after the run finishes its pending work. No `mode` → `error.code = "runActive"`.
 - Bad params → `error.code = "invalidParams"`. The session refusing the prompt → `error.code = "sessionError"` (connection stays usable).
 
+### `abort`
+
+Params `{}`. Result `{}`. Stops the active run, which then settles with `stopReason: "aborted"`; a no-op when idle. Queued messages stay queued. Failure → `error.code = "sessionError"`.
+
+### `clearQueue`
+
+Params `{}`. Result `{ steering: string[], followUp: string[] }` — the queued texts that were dropped, so the app can hand them back to the user. A `queue` event follows.
+
 ## Events
 
 `stats`: payload to be specified by the issue that implements it. Run events, in the order a run emits them:
 
-| `name`       | `data`                                                                                                                       |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `runStarted` | `{}`                                                                                                                         |
-| `delta`      | `{ kind: "text" \| "thinking", text }` — an increment to append                                                              |
-| `messageEnd` | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                              |
-| `runSettled` | `{ stopReason: "success" \| "error" \| "aborted" \| "length", durationMs, errorMessage? }` — pi will not continue on its own |
+| `name`        | `data`                                                                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `runStarted`  | `{}`                                                                                                                                |
+| `userMessage` | `{ text }` — a user message entered the conversation: the prompt itself, or a steer/follow-up pi took in                            |
+| `queue`       | `{ steering: string[], followUp: string[] }` — the messages queued but not yet taken in, oldest first; always the full new contents |
+| `delta`       | `{ kind: "text" \| "thinking", text }` — an increment to append                                                                     |
+| `messageEnd`  | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                                     |
+| `runSettled`  | `{ stopReason: "success" \| "error" \| "aborted" \| "length", durationMs, errorMessage? }` — pi will not continue on its own        |
 
 `durationMs` is measured by the bridge from `runStarted` to `runSettled`. `runStarted` is sent as soon as pi accepts a prompt. `stopReason` is `error` (with `errorMessage`) when the run's final assistant message failed, `aborted` when it was aborted, `length` when it ended because the model hit its output limit, else `success`; failures a retry recovered from do not count.
 
 ### `transcript`
 
-`{ messages, running }` — the whole conversation, oldest first. `messages` entries are `{ role: "user", text }` or `{ role: "assistant", text, thinking }` (completed messages; tool-only turns omitted). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. Tool calls and past runs' outcomes are not part of a snapshot.
+`{ messages, running, steering, followUp }` — the whole conversation, oldest first. `messages` entries are `{ role: "user", text }` or `{ role: "assistant", text, thinking }` (completed messages; tool-only turns omitted). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event. Tool calls and past runs' outcomes are not part of a snapshot.
 
 ### `toolCall`
 
