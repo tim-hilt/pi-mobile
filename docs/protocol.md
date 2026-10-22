@@ -50,7 +50,7 @@ After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloud
 
 ## Commands
 
-`hello`, `prompt`, `abort`, `newSession`, `switchSession`, `getSessions`, `getStats`, `listSkills`, `searchFiles`. Only `hello`, `prompt`, `abort` and `clearQueue` are specified so far; params and results of the rest are specified by the issue that implements each.
+`hello`, `prompt`, `abort`, `newSession`, `switchSession`, `getSessions`, `getStats`, `listSkills`, `searchFiles`. Only `hello`, `prompt`, `abort`, `clearQueue`, `listSkills` and `searchFiles` are specified so far; params and results of the rest are specified by the issue that implements each.
 
 ### `prompt`
 
@@ -67,6 +67,14 @@ Params `{}`. Result `{}`. Stops the active run, which then settles with `stopRea
 ### `clearQueue`
 
 Params `{}`. Result `{ steering: string[], followUp: string[] }` — the queued texts that were dropped, so the app can hand them back to the user. A `queue` event follows.
+
+### `listSkills`
+
+Params `{}`. Result `{ skills: { name, description }[] }` — the session's skills. Invoke one by sending `prompt` text `/skill:<name>` optionally followed by a space and arguments; the bridge's `userMessage` echoes that text, not the skill's expanded body.
+
+### `searchFiles`
+
+Params `{ query: string, limit?: integer }` (`limit` default 20, capped at 100). Result `{ files: string[] }` — paths relative to the session's working directory, `/`-separated, best first. Matching is case-insensitive: file-name prefix, path prefix, substring, then subsequence; ties go to the shorter path; empty `query` matches all. Inside a git repository, ignored files are excluded. Bad params → `error.code = "invalidParams"`.
 
 ## Events
 

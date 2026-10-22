@@ -15,8 +15,9 @@ if (!token) {
   process.exit(1);
 }
 
-const { session } = await createAgentSession({ cwd: process.cwd() });
-const gateway = new PiGateway(session);
+const cwd = process.cwd();
+const { session } = await createAgentSession({ cwd });
+const gateway = new PiGateway(session, cwd);
 const bridge = await startBridge({
   token,
   port: Number(process.env.PI_BRIDGE_PORT ?? 8787),

@@ -1,13 +1,16 @@
-import type {
-  AgentSession,
-  AgentSessionEvent,
+import {
+  parseSkillBlock,
+  type AgentSession,
+  type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type {
   GatewayEvent,
   QueuedMessages,
   SessionGateway,
+  SkillInfo,
   TranscriptMessage,
 } from "./gateway.js";
+import { searchWorkspace } from "./fileSearch.js";
 
 /** The slice of pi's `AgentSession` the bridge relies on. */
 export type PiSession = Pick<
@@ -22,6 +25,7 @@ export type PiSession = Pick<
   | "subscribe"
   | "dispose"
   | "messages"
+  | "resourceLoader"
 >;
 
 /**
@@ -37,7 +41,11 @@ export class PiGateway implements SessionGateway {
     { stopReason: string; errorMessage?: string } | undefined;
   private detach: () => void;
 
-  constructor(private session: PiSession) {
+  /** `cwd` is the session's working directory: the root of file search. */
+  constructor(
+    private session: PiSession,
+    private cwd: string
+  ) {
     this.detach = session.subscribe((event) => this.translate(event));
   }
 
@@ -100,6 +108,16 @@ export class PiGateway implements SessionGateway {
       }
     }
     return history;
+  }
+
+  skills(): SkillInfo[] {
+    return this.session.resourceLoader
+      .getSkills()
+      .skills.map(({ name, description }) => ({ name, description }));
+  }
+
+  searchFiles(query: string, limit: number): Promise<string[]> {
+    return searchWorkspace(this.cwd, query, limit);
   }
 
   subscribe(listener: (event: GatewayEvent) => void): () => void {
@@ -218,11 +236,19 @@ export class PiGateway implements SessionGateway {
   }
 }
 
-/** The text of a user message, whose content is a plain string or blocks (images dropped). */
+/**
+ * The text of a user message, whose content is a plain string or blocks (images dropped).
+ * Pi expands `/skill:name args` into the skill's body before sending; the user
+ * sees what they typed.
+ */
 function userText(
   content: string | ReadonlyArray<{ type: string; text?: string }>
 ): string {
-  return typeof content === "string" ? content : joinBlocks(content, "text");
+  const text =
+    typeof content === "string" ? content : joinBlocks(content, "text");
+  const skill = parseSkillBlock(text);
+  if (!skill) return text;
+  return `/skill:${skill.name}${skill.userMessage ? ` ${skill.userMessage}` : ""}`;
 }
 
 /** Concatenates the `kind` blocks of a message's content (`text` or `thinking`). */

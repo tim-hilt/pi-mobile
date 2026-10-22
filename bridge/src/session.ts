@@ -2,6 +2,7 @@ import type {
   GatewayEvent,
   QueuedMessages,
   SessionGateway,
+  SkillInfo,
 } from "./gateway.js";
 
 /** A bridge → app event as it goes on the wire, minus the `type` discriminator. */
@@ -97,6 +98,16 @@ export class Session {
   /** Drops every queued message and returns the dropped texts. */
   clearQueue(): QueuedMessages {
     return this.gateway.clearQueue();
+  }
+
+  /** The skills the user can invoke as `/skill:<name>`. */
+  skills(): SkillInfo[] {
+    return this.gateway.skills();
+  }
+
+  /** Workspace files matching `query`, best first; see `SessionGateway.searchFiles`. */
+  searchFiles(query: string, limit: number): Promise<string[]> {
+    return this.gateway.searchFiles(query, limit);
   }
 
   close(): void {

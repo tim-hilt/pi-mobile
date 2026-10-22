@@ -4,6 +4,9 @@ import type {
   AgentSessionEventListener,
   PromptOptions,
 } from "@earendil-works/pi-coding-agent";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "vitest";
 import type { GatewayEvent } from "./gateway.js";
 import { PiGateway, type PiSession } from "./piGateway.js";
@@ -21,6 +24,11 @@ class FakePiSession implements PiSession {
   followUpQueue: string[] = [];
   aborts = 0;
   disposed = false;
+  /** What pi's resource loader reports for skills. */
+  skills: Array<{ name: string; description: string; filePath: string }> = [];
+  resourceLoader = {
+    getSkills: () => ({ skills: this.skills, diagnostics: [] }),
+  } as unknown as PiSession["resourceLoader"];
   /** When set, `prompt` rejects with it before the prompt is accepted. */
   rejectWith: Error | undefined;
   /** Resolves the pending `prompt()` call, as pi does when the run finishes. */
@@ -70,7 +78,7 @@ class FakePiSession implements PiSession {
 
 function setup() {
   const pi = new FakePiSession();
-  const gateway = new PiGateway(pi);
+  const gateway = new PiGateway(pi, process.cwd());
   const events: GatewayEvent[] = [];
   gateway.subscribe((event) => events.push(event));
   return { pi, gateway, events };
@@ -365,5 +373,58 @@ test("the transcript holds completed user and assistant messages, text and think
     { role: "user", text: "hi" },
     { role: "user", text: "see this" },
     { role: "assistant", text: "Hello", thinking: "hm" },
+  ]);
+});
+
+test("skills are the ones pi's resource loader discovered, by name and description", () => {
+  const { pi, gateway } = setup();
+  pi.skills = [
+    {
+      name: "tdd",
+      description: "Test-driven development.",
+      filePath: "/x/tdd/SKILL.md",
+    },
+    { name: "pr", description: "Write a PR body.", filePath: "/x/pr/SKILL.md" },
+  ];
+
+  expect(gateway.skills()).toEqual([
+    { name: "tdd", description: "Test-driven development." },
+    { name: "pr", description: "Write a PR body." },
+  ]);
+});
+
+test("file search covers the session's working directory", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pi-gw-"));
+  writeFileSync(join(dir, "notes.md"), "");
+  const gateway = new PiGateway(new FakePiSession(), dir);
+
+  expect(await gateway.searchFiles("note", 5)).toEqual(["notes.md"]);
+
+  rmSync(dir, { recursive: true });
+});
+
+test("an invoked skill shows as the command the user typed, not its expanded body", async () => {
+  const { pi, gateway, events } = setup();
+  await gateway.prompt("/skill:tdd add login");
+  events.length = 0;
+  const expanded = (rest = "") =>
+    `<skill name="tdd" location="/x/tdd/SKILL.md">\nReferences are relative to /x/tdd.\n\nBody\n</skill>${rest}`;
+
+  pi.emit({
+    type: "message_end",
+    message: { role: "user", content: expanded("\n\nadd login") },
+  });
+  pi.emit({
+    type: "message_end",
+    message: { role: "user", content: expanded() },
+  });
+  pi.messages = [{ role: "user", content: expanded("\n\nadd login") }] as never;
+
+  expect(events).toEqual([
+    { name: "userMessage", text: "/skill:tdd add login" },
+    { name: "userMessage", text: "/skill:tdd" },
+  ]);
+  expect(gateway.transcript()).toEqual([
+    { role: "user", text: "/skill:tdd add login" },
   ]);
 });

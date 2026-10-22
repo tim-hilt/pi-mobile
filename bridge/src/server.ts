@@ -35,6 +35,9 @@ export interface Bridge {
 
 /** The bridge only ever listens on loopback; remote access goes through a tunnel. */
 const HOST = "127.0.0.1";
+/** `searchFiles` result size when the app names none, and the most it may ask for. */
+const DEFAULT_FILE_LIMIT = 20;
+const MAX_FILE_LIMIT = 100;
 /** WebSocket close code for protocol violations (policy violation). */
 const CLOSE_PROTOCOL_VIOLATION = 1008;
 /** WebSocket close code for an unexpected bridge failure. */
@@ -154,6 +157,34 @@ function serve(ws: WebSocket, pingIntervalMs: number, session: Session): void {
       case "clearQueue":
         await respond(async () => session.clearQueue());
         break;
+      case "listSkills":
+        await respond(async () => ({ skills: session.skills() }));
+        break;
+      case "searchFiles": {
+        const { query, limit = DEFAULT_FILE_LIMIT } = params;
+        if (
+          typeof query !== "string" ||
+          typeof limit !== "number" ||
+          !Number.isInteger(limit) ||
+          limit < 1
+        ) {
+          reply({
+            error: {
+              code: "invalidParams",
+              message:
+                "searchFiles requires string query and positive integer limit",
+            },
+          });
+          break;
+        }
+        await respond(async () => ({
+          files: await session.searchFiles(
+            query,
+            Math.min(limit, MAX_FILE_LIMIT)
+          ),
+        }));
+        break;
+      }
       default:
         reply({
           error: {

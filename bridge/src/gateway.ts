@@ -25,8 +25,21 @@ export interface SessionGateway {
    * behind a catch-up snapshot. Excludes a message still being generated.
    */
   transcript(): TranscriptMessage[];
+  /** The skills the session can invoke as `/skill:<name>`. */
+  skills(): SkillInfo[];
+  /**
+   * Workspace files matching `query` (prefix or fuzzy, best first), at most
+   * `limit`, as paths relative to the session's working directory.
+   */
+  searchFiles(query: string, limit: number): Promise<string[]>;
   /** Registers `listener` for session events; returns the unsubscribe function. */
   subscribe(listener: (event: GatewayEvent) => void): () => void;
+}
+
+/** A skill the user can invoke by name. */
+export interface SkillInfo {
+  name: string;
+  description: string;
 }
 
 /** Texts waiting to enter the run, oldest first. */

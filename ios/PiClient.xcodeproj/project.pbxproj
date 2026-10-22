@@ -11,9 +11,11 @@
 		0EEC917DAECED15161C697E1 /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9AF9FE9CC9038B8E2D475A /* Transcript.swift */; };
 		1E366D1A3AC96A961528AFB2 /* ProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F40E60F44946D0A77AD57B27 /* ProtocolTests.swift */; };
 		2586A5DF06C410B3DF5269BC /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D79553F7A35F045451144D /* ConnectionView.swift */; };
+		2F9C8AEE268F0AD970CB16CC /* SuggestionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */; };
 		3273CBC954687BE5375E258E /* BridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EDE49D5046EE2366A0FF40 /* BridgeClient.swift */; };
 		4AB13387D7B418474153407C /* BridgeClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35FD9A7F792B3B5BE75ECF5D /* BridgeClientTests.swift */; };
 		524883C2ED762EEAE3CE95C0 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EE652E751C8D2E4F10FDD50 /* ComposerView.swift */; };
+		5C74CBDF1C1CD8BC589EA885 /* Suggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A872C5EA110C28BB414C14 /* Suggestions.swift */; };
 		745B422EEAAAA0783CB6CD5F /* FakeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */; };
 		7CB9611764B9AE46E0EA4359 /* PiClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6823103B65B8BAAE57AABB52 /* PiClientApp.swift */; };
 		87EF2C70AC20EE7C14FDF691 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */; };
@@ -37,6 +39,7 @@
 		2D9AF9FE9CC9038B8E2D475A /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
 		35FD9A7F792B3B5BE75ECF5D /* BridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClientTests.swift; sourceTree = "<group>"; };
 		3EE652E751C8D2E4F10FDD50 /* ComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerView.swift; sourceTree = "<group>"; };
+		57A872C5EA110C28BB414C14 /* Suggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Suggestions.swift; sourceTree = "<group>"; };
 		5A7797D453BCDAFB9100E78D /* ConnectionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStoreTests.swift; sourceTree = "<group>"; };
 		664DA1BB897EB216FD716D97 /* PiClient.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PiClient.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6823103B65B8BAAE57AABB52 /* PiClientApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiClientApp.swift; sourceTree = "<group>"; };
@@ -44,6 +47,7 @@
 		A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
 		B6821A3F3F700605BE20AD43 /* TranscriptSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptSyncTests.swift; sourceTree = "<group>"; };
 		BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBridge.swift; sourceTree = "<group>"; };
+		ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionsTests.swift; sourceTree = "<group>"; };
 		F1033CE21B96DC349C1B6D25 /* PiClientTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PiClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F40E60F44946D0A77AD57B27 /* ProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolTests.swift; sourceTree = "<group>"; };
 		F5C52994EACF78C7101A20C7 /* BridgeProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeProtocol.swift; sourceTree = "<group>"; };
@@ -80,6 +84,7 @@
 				FAB0719687016E1D6C1517EE /* ConnectionStore.swift */,
 				72D79553F7A35F045451144D /* ConnectionView.swift */,
 				6823103B65B8BAAE57AABB52 /* PiClientApp.swift */,
+				57A872C5EA110C28BB414C14 /* Suggestions.swift */,
 				2D9AF9FE9CC9038B8E2D475A /* Transcript.swift */,
 				A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */,
 			);
@@ -94,6 +99,7 @@
 				5A7797D453BCDAFB9100E78D /* ConnectionStoreTests.swift */,
 				BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */,
 				F40E60F44946D0A77AD57B27 /* ProtocolTests.swift */,
+				ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */,
 				B6821A3F3F700605BE20AD43 /* TranscriptSyncTests.swift */,
 			);
 			path = PiClientTests;
@@ -178,6 +184,7 @@
 				C33C9D10A53D1B5D1580F83A /* ConnectionStoreTests.swift in Sources */,
 				745B422EEAAAA0783CB6CD5F /* FakeBridge.swift in Sources */,
 				1E366D1A3AC96A961528AFB2 /* ProtocolTests.swift in Sources */,
+				2F9C8AEE268F0AD970CB16CC /* SuggestionsTests.swift in Sources */,
 				0E0BE9AD6D5FF492BA23188E /* TranscriptSyncTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -192,6 +199,7 @@
 				931949D2158ED8602B7EE894 /* ConnectionStore.swift in Sources */,
 				2586A5DF06C410B3DF5269BC /* ConnectionView.swift in Sources */,
 				7CB9611764B9AE46E0EA4359 /* PiClientApp.swift in Sources */,
+				5C74CBDF1C1CD8BC589EA885 /* Suggestions.swift in Sources */,
 				0EEC917DAECED15161C697E1 /* Transcript.swift in Sources */,
 				87EF2C70AC20EE7C14FDF691 /* TranscriptView.swift in Sources */,
 			);

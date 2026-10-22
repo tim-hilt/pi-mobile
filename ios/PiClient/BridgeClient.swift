@@ -36,7 +36,7 @@ enum PromptMode: String, Sendable {
 /// from the transcript's replay cursor; only a refusal by the bridge (`failed`) or `disconnect`
 /// ends the attempts.
 ///
-/// Commands (`send`, `abort`, `clearQueue`) are async: they return once the bridge has answered
+/// Commands (`send`, `abort`, `clearQueue`, `skills`, `searchFiles`) are async: they return once the bridge has answered
 /// and throw its `ProtocolError`, or `CommandError` if the connection is not usable. Their effects
 /// show up in `transcript` through the events the bridge streams, never through the return value.
 @MainActor @Observable
@@ -98,6 +98,17 @@ final class BridgeClient {
   func clearQueue() async throws -> Transcript.Queue {
     let result = try await command("clearQueue")
     return Transcript.Queue(steering: result.steering ?? [], followUp: result.followUp ?? [])
+  }
+
+  /// The session's skills, invoked by sending `/skill:<name>`.
+  func skills() async throws -> [Skill] {
+    try await command("listSkills").skills ?? []
+  }
+
+  /// Workspace files matching `query` (prefix or fuzzy), best first, as paths relative to the
+  /// session's working directory.
+  func searchFiles(_ query: String) async throws -> [String] {
+    try await command("searchFiles", ["query": .string(query)]).files ?? []
   }
 
   private func command(_ name: String, _ params: [String: JSONValue] = [:]) async throws -> Record.CommandResult {

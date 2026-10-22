@@ -36,6 +36,14 @@ struct ProtocolError: Codable, Equatable, Sendable, LocalizedError {
   var errorDescription: String? { message }
 }
 
+/// A skill the user can invoke with `/skill:<name>`.
+struct Skill: Decodable, Equatable, Identifiable, Sendable {
+  let name: String
+  let description: String
+
+  var id: String { name }
+}
+
 /// A bridge → app record. Only the fields the app currently reads are decoded.
 struct Record: Decodable, Sendable {
   /// `result`, `event` or `error`.
@@ -57,11 +65,20 @@ struct Record: Decodable, Sendable {
     /// `clearQueue`: the texts dropped.
     let steering: [String]?
     let followUp: [String]?
+    /// `listSkills`.
+    let skills: [Skill]?
+    /// `searchFiles`: paths relative to the session's working directory, best first.
+    let files: [String]?
 
-    init(protocolVersion: Int? = nil, steering: [String]? = nil, followUp: [String]? = nil) {
+    init(
+      protocolVersion: Int? = nil, steering: [String]? = nil, followUp: [String]? = nil, skills: [Skill]? = nil,
+      files: [String]? = nil
+    ) {
       self.protocolVersion = protocolVersion
       self.steering = steering
       self.followUp = followUp
+      self.skills = skills
+      self.files = files
     }
   }
 

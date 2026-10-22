@@ -158,3 +158,34 @@ private func event(_ seq: Int, _ name: String, _ data: String) -> String {
     #expect(client.transcript.messages.map(\.text) == ["left"])
   }
 }
+
+// MARK: Discovery
+
+extension BridgeCommandTests {
+  @Test func listingSkillsReturnsTheSessionsSkills() async throws {
+    let (client, bridge, received) = try await connected { _, peer in
+      peer.send(
+        result(2, #"{"skills":[{"name":"tdd","description":"Test-driven development."},{"name":"pr","description":"Write a PR."}]}"#))
+    }
+    defer { bridge.stop() }
+
+    let skills = try await client.skills()
+
+    #expect(skills == [Skill(name: "tdd", description: "Test-driven development."), Skill(name: "pr", description: "Write a PR.")])
+    #expect(received.value?.first?.contains(#""name":"listSkills""#) == true)
+  }
+
+  @Test func searchingFilesSendsTheQueryAndReturnsTheMatches() async throws {
+    let (client, bridge, received) = try await connected { _, peer in
+      peer.send(result(2, #"{"files":["src/server.ts","README.md"]}"#))
+    }
+    defer { bridge.stop() }
+
+    let files = try await client.searchFiles("ser")
+
+    #expect(files == ["src/server.ts", "README.md"])
+    let frame = try #require(received.value?.first)
+    #expect(frame.contains(#""name":"searchFiles""#))
+    #expect(frame.contains(#""query":"ser""#))
+  }
+}

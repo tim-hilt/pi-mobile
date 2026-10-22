@@ -638,3 +638,79 @@ test("a user message entering the transcript streams as an event", async () => {
 
   expect(await c.next()).toEqual(wire(1, "userMessage", { text: "hi" }));
 });
+
+test("listSkills returns the session's skills", async () => {
+  const gateway = new FakeGateway();
+  gateway.skillList = [
+    { name: "tdd", description: "Test-driven development." },
+    { name: "pr", description: "Write a PR body." },
+  ];
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "listSkills", {}));
+
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    result: { skills: gateway.skillList },
+  });
+});
+
+test("searchFiles returns matching workspace paths, 20 by default", async () => {
+  const gateway = new FakeGateway();
+  gateway.files = Array.from({ length: 30 }, (_, i) => `src/f${i}.ts`);
+  gateway.files.push("README.md");
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "searchFiles", { query: "src/" }));
+  c.send(command(3, "searchFiles", { query: "read", limit: 5 }));
+
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    result: { files: gateway.files.slice(0, 20) },
+  });
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 3,
+    result: { files: [] },
+  });
+  expect(gateway.searches).toEqual([
+    ["src/", 20],
+    ["read", 5],
+  ]);
+});
+
+test.each([
+  ["missing query", {}],
+  ["non-string query", { query: 1 }],
+  ["non-positive limit", { query: "a", limit: 0 }],
+  ["fractional limit", { query: "a", limit: 1.5 }],
+])("searchFiles with %s is invalidParams", async (_name, params) => {
+  const c = await ready(await bridge());
+
+  c.send(command(2, "searchFiles", params));
+
+  expect(await c.next()).toMatchObject({
+    type: "result",
+    id: 2,
+    error: { code: "invalidParams" },
+  });
+});
+
+test("searchFiles clamps limit to 100 and survives a failing search", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "searchFiles", { query: "a", limit: 5000 }));
+  await c.next();
+  gateway.failNextWith = new Error("disk gone");
+  c.send(command(3, "searchFiles", { query: "a" }));
+
+  expect(gateway.searches).toEqual([["a", 100]]);
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 3,
+    error: { code: "sessionError", message: "disk gone" },
+  });
+});

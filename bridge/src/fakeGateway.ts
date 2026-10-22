@@ -2,6 +2,7 @@ import type {
   GatewayEvent,
   QueuedMessages,
   SessionGateway,
+  SkillInfo,
   TranscriptMessage,
 } from "./gateway.js";
 
@@ -12,6 +13,12 @@ export class FakeGateway implements SessionGateway {
   readonly followUps: string[] = [];
   /** What `transcript()` reports; tests set it to the history they want snapshotted. */
   messages: TranscriptMessage[] = [];
+  /** What `skills()` reports. */
+  skillList: SkillInfo[] = [];
+  /** Workspace files `searchFiles` draws from, filtered by simple substring match. */
+  files: string[] = [];
+  /** The `(query, limit)` of every `searchFiles` call. */
+  readonly searches: Array<[string, number]> = [];
   aborts = 0;
   /** What `queue()` reports; tests set it to the pending messages they want snapshotted. */
   pending: QueuedMessages = { steering: [], followUp: [] };
@@ -40,6 +47,14 @@ export class FakeGateway implements SessionGateway {
   };
 
   transcript = () => this.messages;
+
+  skills = () => this.skillList;
+
+  searchFiles = async (query: string, limit: number) => {
+    this.throwIfFailing();
+    this.searches.push([query, limit]);
+    return this.files.filter((f) => f.includes(query)).slice(0, limit);
+  };
 
   subscribe(listener: (event: GatewayEvent) => void): () => void {
     this.listeners.add(listener);
