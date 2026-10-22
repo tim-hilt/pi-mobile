@@ -33,4 +33,6 @@ PI_BRIDGE_TOKEN=secret npm start -w bridge   # PI_BRIDGE_PORT defaults to 8787
 
 Notifications: set `PI_BRIDGE_NTFY_TOPIC` to an unguessable topic (and `PI_BRIDGE_NTFY_URL` if self-hosting) to get a notification when a run settles.
 
+Remote access (Cloudflare Tunnel): see [docs/remote-setup.md](docs/remote-setup.md).
+
 Pre-commit runs Prettier, typecheck, and bridge tests; failure blocks the commit.
