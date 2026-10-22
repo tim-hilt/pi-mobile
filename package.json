@@ -1,0 +1,17 @@
+{
+  "name": "pi-native-client",
+  "private": true,
+  "workspaces": [
+    "bridge"
+  ],
+  "scripts": {
+    "prepare": "husky",
+    "typecheck": "npm run typecheck -w bridge",
+    "test": "npm run test -w bridge"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10"
+  }
+}
