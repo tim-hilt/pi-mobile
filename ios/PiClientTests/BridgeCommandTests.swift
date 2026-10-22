@@ -189,3 +189,87 @@ extension BridgeCommandTests {
     #expect(frame.contains(#""query":"ser""#))
   }
 }
+
+// MARK: Sessions
+
+extension BridgeCommandTests {
+  @Test func listingSessionsReturnsTheRecentOnesAndWhichIsCurrent() async throws {
+    let (client, bridge, received) = try await connected { _, peer in
+      peer.send(
+        result(
+          2,
+          #"{"sessions":[{"id":"s2","name":"Refactor","preview":"first","modifiedAt":"2025-01-02T03:04:05.000Z","messageCount":4},{"id":"s1","preview":"older","modifiedAt":"2025-01-01T00:00:00.000Z","messageCount":2}],"currentId":"s1"}"#
+        ))
+    }
+    defer { bridge.stop() }
+
+    let list = try await client.sessions()
+
+    #expect(list.currentId == "s1")
+    #expect(list.sessions.map(\.id) == ["s2", "s1"])
+    #expect(list.sessions.map(\.title) == ["Refactor", "older"])
+    #expect(list.sessions[0].modifiedAt == Date(timeIntervalSince1970: 1_735_787_045))
+    #expect(received.value?.first?.contains(#""name":"getSessions""#) == true)
+  }
+
+  @Test func startingANewSessionAsksTheBridge() async throws {
+    let (client, bridge, received) = try await connected { _, peer in peer.send(result(2)) }
+    defer { bridge.stop() }
+
+    try await client.newSession()
+
+    #expect(received.value?.first?.contains(#""name":"newSession""#) == true)
+  }
+
+  @Test func switchingSessionsNamesTheTargetAndASwitchSnapshotShowsItsTranscript() async throws {
+    let (client, bridge, received) = try await connected(
+      onConnect: event(
+        3, "transcript", #"{"sessionId":"s1","running":false,"messages":[{"role":"user","text":"old"}]}"#)
+    ) { _, peer in
+      peer.send(
+        event(4, "transcript", #"{"sessionId":"s2","running":false,"messages":[{"role":"user","text":"new"}]}"#)
+          + result(2))
+    }
+    defer { bridge.stop() }
+
+    try await client.switchSession(id: "s2")
+
+    let frame = try #require(received.value?.first)
+    #expect(frame.contains(#""name":"switchSession""#))
+    #expect(frame.contains(#""id":"s2""#))
+    for _ in 0..<500 where client.transcript.lastSeq < 4 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(client.transcript.sessionId == "s2")
+    #expect(client.transcript.messages.map(\.text) == ["new"])
+  }
+
+  @Test func theBridgeRefusingASwitchThrowsItsError() async throws {
+    let (client, bridge, _) = try await connected { _, peer in
+      peer.send(#"{"type":"result","id":2,"error":{"code":"runActive","message":"abort first"}}"# + "\n")
+    }
+    defer { bridge.stop() }
+
+    await #expect(throws: ProtocolError(code: "runActive", message: "abort first")) {
+      try await client.newSession()
+    }
+  }
+
+  @Test func statsReturnTheSessionsCountsAndRunTiming() async throws {
+    let (client, bridge, received) = try await connected { _, peer in
+      peer.send(
+        result(
+          2,
+          #"{"userMessages":2,"assistantMessages":3,"toolCalls":5,"tokens":1200,"cost":0.25,"runs":2,"runDurationMs":65000}"#
+        ))
+    }
+    defer { bridge.stop() }
+
+    let stats = try await client.stats()
+
+    #expect(
+      stats
+        == SessionStats(
+          userMessages: 2, assistantMessages: 3, toolCalls: 5, tokens: 1200, cost: 0.25, runs: 2,
+          runDurationMs: 65000))
+    #expect(received.value?.first?.contains(#""name":"getStats""#) == true)
+  }
+}

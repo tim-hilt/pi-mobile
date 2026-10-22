@@ -1,7 +1,9 @@
 import type {
   GatewayEvent,
+  GatewayStats,
   QueuedMessages,
   SessionGateway,
+  SessionSummary,
   SkillInfo,
 } from "./gateway.js";
 
@@ -22,6 +24,17 @@ export class CommandError extends Error {
   }
 }
 
+/** How many sessions `sessions()` lists. */
+const RECENT_SESSIONS = 30;
+
+/** `GatewayStats` plus the run timing only the bridge observes. */
+export interface SessionStats extends GatewayStats {
+  /** Runs that settled since this session became current. */
+  runs: number;
+  /** Their total duration. */
+  runDurationMs: number;
+}
+
 /**
  * The session as the protocol sees it: turns the gateway's events into
  * sequenced `BridgeEvent`s (adding run timing), remembers recent ones so a
@@ -34,6 +47,8 @@ export class Session {
   /** Newest events, oldest first; holds `seq - log.length + 1 .. seq`. */
   private log: BridgeEvent[] = [];
   /** The assistant message being generated: its deltas so far, not yet in the gateway's transcript. */
+  private runs = 0;
+  private runDurationMs = 0;
   private streaming: { text: string; thinking: string } | undefined;
   private listeners = new Set<(event: BridgeEvent) => void>();
   private detach: () => void;
@@ -100,6 +115,50 @@ export class Session {
     return this.gateway.clearQueue();
   }
 
+  /** The most recent stored sessions, newest first, and which one is current. */
+  async sessions(): Promise<{
+    sessions: SessionSummary[];
+    currentId: string;
+  }> {
+    const all = await this.gateway.sessions();
+    return {
+      sessions: all.slice(0, RECENT_SESSIONS),
+      currentId: this.gateway.sessionId(),
+    };
+  }
+
+  /**
+   * Replaces the session with a fresh one. Listeners then receive its empty
+   * snapshot as the next event. Rejects with `CommandError` while a run is active.
+   */
+  async newSession(): Promise<void> {
+    this.assertIdle("starting a new session");
+    await this.gateway.newSession();
+  }
+
+  /**
+   * Makes the stored session `id` current; listeners then receive its snapshot
+   * as the next event. Switching to the current session changes nothing.
+   * Rejects with `CommandError` for an unknown `id` or while a run is active.
+   */
+  async switchSession(id: string): Promise<void> {
+    this.assertIdle("switching sessions");
+    if (id === this.gateway.sessionId()) return;
+    const known = (await this.gateway.sessions()).some((s) => s.id === id);
+    if (!known)
+      throw new CommandError("unknownSession", `no session with id "${id}"`);
+    await this.gateway.switchSession(id);
+  }
+
+  /** The current session's counts, with the runs this bridge has timed for it. */
+  stats(): SessionStats {
+    return {
+      ...this.gateway.stats(),
+      runs: this.runs,
+      runDurationMs: this.runDurationMs,
+    };
+  }
+
   /** The skills the user can invoke as `/skill:<name>`. */
   skills(): SkillInfo[] {
     return this.gateway.skills();
@@ -128,6 +187,7 @@ export class Session {
       data: {
         messages,
         running,
+        sessionId: this.gateway.sessionId(),
         ...this.gateway.queue(),
         // The app has no other way to learn when a run it joined midway began.
         ...(running && {
@@ -137,7 +197,32 @@ export class Session {
     };
   }
 
+  private assertIdle(action: string): void {
+    if (this.runStartedAt !== undefined)
+      throw new CommandError(
+        "runActive",
+        `a run is active; abort it before ${action}`
+      );
+  }
+
+  /**
+   * Starts the event history over for a replaced session. The switch takes a
+   * seq of its own and the log is emptied, so a cursor from before it can
+   * never replay the old session's events: it falls back to a snapshot.
+   */
+  private restart(): void {
+    this.runStartedAt = undefined;
+    this.streaming = undefined;
+    this.runs = 0;
+    this.runDurationMs = 0;
+    this.log = [];
+    this.seq++;
+    const snapshot = this.snapshot();
+    for (const listener of this.listeners) listener(snapshot);
+  }
+
   private publish(event: GatewayEvent): void {
+    if (event.name === "sessionChanged") return this.restart();
     const { name, ...data } = event;
     if (event.name === "runStarted") {
       this.runStartedAt = performance.now();
@@ -153,6 +238,8 @@ export class Session {
       );
       this.runStartedAt = undefined;
       this.streaming = undefined;
+      this.runs++;
+      this.runDurationMs += durationMs;
       Object.assign(data, { durationMs });
     }
     const wire = { seq: ++this.seq, name, data };

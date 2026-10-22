@@ -36,7 +36,8 @@ enum PromptMode: String, Sendable {
 /// from the transcript's replay cursor; only a refusal by the bridge (`failed`) or `disconnect`
 /// ends the attempts.
 ///
-/// Commands (`send`, `abort`, `clearQueue`, `skills`, `searchFiles`) are async: they return once the bridge has answered
+/// Commands (`send`, `abort`, `clearQueue`, `skills`, `searchFiles`, `sessions`, `newSession`,
+/// `switchSession`, `stats`) are async: they return once the bridge has answered
 /// and throw its `ProtocolError`, or `CommandError` if the connection is not usable. Their effects
 /// show up in `transcript` through the events the bridge streams, never through the return value.
 @MainActor @Observable
@@ -109,6 +110,31 @@ final class BridgeClient {
   /// session's working directory.
   func searchFiles(_ query: String) async throws -> [String] {
     try await command("searchFiles", ["query": .string(query)]).files ?? []
+  }
+
+  /// The recent stored sessions, newest first.
+  func sessions() async throws -> SessionList {
+    let result = try await command("getSessions")
+    return SessionList(sessions: result.sessions ?? [], currentId: result.currentId)
+  }
+
+  /// Starts a fresh session. The bridge refuses (`runActive`) while a run is active; on success
+  /// `transcript` is replaced by the empty new session.
+  func newSession() async throws {
+    _ = try await command("newSession")
+  }
+
+  /// Makes the stored session `id` current, with the same refusal and effect as `newSession`.
+  func switchSession(id: String) async throws {
+    _ = try await command("switchSession", ["id": .string(id)])
+  }
+
+  /// Counts and run timing of the current session.
+  func stats() async throws -> SessionStats {
+    guard let stats = try await command("getStats").stats else {
+      throw ProtocolError(code: "malformedResult", message: "getStats returned no stats")
+    }
+    return stats
   }
 
   private func command(_ name: String, _ params: [String: JSONValue] = [:]) async throws -> Record.CommandResult {

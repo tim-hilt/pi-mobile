@@ -32,6 +32,23 @@ export interface SessionGateway {
    * `limit`, as paths relative to the session's working directory.
    */
   searchFiles(query: string, limit: number): Promise<string[]>;
+  /** Identifies the session the gateway currently drives. */
+  sessionId(): string;
+  /** Every stored session of the working directory, most recently modified first. */
+  sessions(): Promise<SessionSummary[]>;
+  /**
+   * Replaces the driven session with a fresh empty one. Emits `sessionChanged`
+   * once the new session is live. The caller must ensure no run is active.
+   */
+  newSession(): Promise<void>;
+  /**
+   * Replaces the driven session with the stored session `id` (one of
+   * `sessions()`), emitting `sessionChanged` once it is live. The caller must
+   * ensure no run is active.
+   */
+  switchSession(id: string): Promise<void>;
+  /** Message, tool and token counts of the driven session. */
+  stats(): GatewayStats;
   /** Registers `listener` for session events; returns the unsubscribe function. */
   subscribe(listener: (event: GatewayEvent) => void): () => void;
 }
@@ -40,6 +57,27 @@ export interface SessionGateway {
 export interface SkillInfo {
   name: string;
   description: string;
+}
+
+/** A stored session as listed for switching. */
+export interface SessionSummary {
+  id: string;
+  /** The user-given name, if any. */
+  name?: string;
+  /** The session's first user message, to tell unnamed sessions apart. */
+  preview: string;
+  /** ISO 8601 time of the last activity. */
+  modifiedAt: string;
+  messageCount: number;
+}
+
+/** What the session has consumed so far; `tokens` and `cost` cover the whole session. */
+export interface GatewayStats {
+  userMessages: number;
+  assistantMessages: number;
+  toolCalls: number;
+  tokens: number;
+  cost: number;
 }
 
 /** Texts waiting to enter the run, oldest first. */
@@ -59,6 +97,8 @@ export type StopReason = "success" | "error" | "aborted" | "length";
 /** Session events in the order pi emits them for one run. */
 export type GatewayEvent =
   | { name: "runStarted" }
+  /** The driven session was replaced (new or switched); nothing of the old one is current any more. */
+  | { name: "sessionChanged" }
   /** A user message entered the conversation: the prompt itself, or a steer/follow-up pi took in. */
   | { name: "userMessage"; text: string }
   /** The pending queue changed; carries its full new contents. */

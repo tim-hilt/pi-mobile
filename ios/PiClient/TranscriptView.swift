@@ -4,10 +4,21 @@ import SwiftUI
 struct TranscriptView: View {
   let client: BridgeClient
 
+  @State private var showingSessions = false
+
   var body: some View {
-    VStack(spacing: 0) {
-      conversation
-      ComposerView(client: client)
+    NavigationStack {
+      VStack(spacing: 0) {
+        conversation
+        ComposerView(client: client)
+      }
+      .navigationTitle("Transcript")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        Button("Sessions", systemImage: "clock.arrow.circlepath") { showingSessions = true }
+          .disabled(client.state != .connected)
+      }
+      .sheet(isPresented: $showingSessions) { SessionsView(client: client) }
     }
   }
 
@@ -130,7 +141,7 @@ private struct RunView: View {
   }
 }
 
-private func format(durationMs: Int) -> String {
+func format(durationMs: Int) -> String {
   Duration.milliseconds(durationMs).formatted(
     .units(allowed: [.hours, .minutes, .seconds, .milliseconds], width: .narrow, maximumUnitCount: 2))
 }

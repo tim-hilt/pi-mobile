@@ -1,12 +1,17 @@
 import {
   parseSkillBlock,
+  SessionManager,
   type AgentSession,
   type AgentSessionEvent,
+  type AgentSessionRuntime,
+  type SessionInfo,
 } from "@earendil-works/pi-coding-agent";
 import type {
   GatewayEvent,
+  GatewayStats,
   QueuedMessages,
   SessionGateway,
+  SessionSummary,
   SkillInfo,
   TranscriptMessage,
 } from "./gateway.js";
@@ -23,15 +28,31 @@ export type PiSession = Pick<
   | "getSteeringMessages"
   | "getFollowUpMessages"
   | "subscribe"
-  | "dispose"
   | "messages"
   | "resourceLoader"
+  | "sessionId"
+  | "getSessionStats"
 >;
 
 /**
- * `SessionGateway` backed by a real pi `AgentSession`. Translates pi's session
- * events into gateway events and owns the run lifecycle: a run begins when pi
- * accepts a prompt and ends when pi reports it has settled.
+ * The slice of pi's `AgentSessionRuntime` the bridge relies on: it owns the
+ * active session and replaces it (tearing the old one down) on new/switch.
+ */
+export interface PiRuntime extends Pick<
+  AgentSessionRuntime,
+  "newSession" | "switchSession" | "dispose"
+> {
+  readonly session: PiSession;
+}
+
+/** Lists the stored sessions of a working directory, most recently modified first. */
+type ListSessions = (cwd: string) => Promise<SessionInfo[]>;
+
+/**
+ * `SessionGateway` backed by a real pi session runtime. Translates pi's
+ * session events into gateway events (following the runtime when it replaces
+ * the active session) and owns the run lifecycle: a run begins when pi accepts
+ * a prompt and ends when pi reports it has settled.
  */
 export class PiGateway implements SessionGateway {
   private listeners = new Set<(event: GatewayEvent) => void>();
@@ -41,12 +62,18 @@ export class PiGateway implements SessionGateway {
     { stopReason: string; errorMessage?: string } | undefined;
   private detach: () => void;
 
-  /** `cwd` is the session's working directory: the root of file search. */
+  /** `cwd` is the session's working directory: the root of file search and of the session list. */
   constructor(
-    private session: PiSession,
-    private cwd: string
+    private runtime: PiRuntime,
+    private cwd: string,
+    private listSessions: ListSessions = (dir) => SessionManager.list(dir)
   ) {
-    this.detach = session.subscribe((event) => this.translate(event));
+    this.detach = this.attach();
+  }
+
+  /** The active pi session; replaced by the runtime on new/switch. */
+  private get session(): PiSession {
+    return this.runtime.session;
   }
 
   /**
@@ -120,16 +147,73 @@ export class PiGateway implements SessionGateway {
     return searchWorkspace(this.cwd, query, limit);
   }
 
+  sessionId(): string {
+    return this.session.sessionId;
+  }
+
+  async sessions(): Promise<SessionSummary[]> {
+    return (await this.listSessions(this.cwd)).map((info) => ({
+      id: info.id,
+      ...(info.name !== undefined && { name: info.name }),
+      preview: info.firstMessage,
+      modifiedAt: info.modified.toISOString(),
+      messageCount: info.messageCount,
+    }));
+  }
+
+  newSession(): Promise<void> {
+    return this.replaceSession(() => this.runtime.newSession());
+  }
+
+  async switchSession(id: string): Promise<void> {
+    const stored = (await this.listSessions(this.cwd)).find((s) => s.id === id);
+    if (!stored) throw new Error(`no stored session "${id}"`);
+    await this.replaceSession(() => this.runtime.switchSession(stored.path));
+  }
+
+  stats(): GatewayStats {
+    const { userMessages, assistantMessages, toolCalls, tokens, cost } =
+      this.session.getSessionStats();
+    return {
+      userMessages,
+      assistantMessages,
+      toolCalls,
+      tokens: tokens.total,
+      cost,
+    };
+  }
+
   subscribe(listener: (event: GatewayEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  /** Aborts any active run and releases the pi session. */
-  dispose(): void {
+  /** Aborts any active run and releases the pi runtime. */
+  dispose(): Promise<void> {
     this.detach();
     this.listeners.clear();
-    this.session.dispose();
+    return this.runtime.dispose();
+  }
+
+  private attach(): () => void {
+    return this.session.subscribe((event) => this.translate(event));
+  }
+
+  /**
+   * Has the runtime replace the active session, then moves the event
+   * subscription and run state over to the replacement. Rejects, leaving the
+   * old session in place, if pi cancels the change.
+   */
+  private async replaceSession(
+    change: () => Promise<{ cancelled: boolean }>
+  ): Promise<void> {
+    const { cancelled } = await change();
+    if (cancelled) throw new Error("the session change was cancelled");
+    this.detach();
+    this.running = false;
+    this.lastAssistant = undefined;
+    this.detach = this.attach();
+    this.emit({ name: "sessionChanged" });
   }
 
   /** Emits `runStarted` once per run, however many paths report the start. */

@@ -432,6 +432,7 @@ test("a fresh connect gets a transcript snapshot at the current seq", async () =
 
   expect(await c.next()).toEqual(
     wire(2, "transcript", {
+      sessionId: "s1",
       messages: gateway.messages,
       running: false,
       steering: [],
@@ -452,6 +453,7 @@ test("a snapshot taken mid-run includes the message still streaming", async () =
   const c = await resume(b, 0);
   expect(await c.next()).toEqual(
     wire(4, "transcript", {
+      sessionId: "s1",
       messages: [
         { role: "user", text: "hi" },
         { role: "assistant", text: "Hello", thinking: "hm", streaming: true },
@@ -503,6 +505,7 @@ test("a snapshot never repeats a message that already ended", async () => {
 
   expect(await c.next()).toEqual(
     wire(3, "transcript", {
+      sessionId: "s1",
       messages: gateway.messages,
       running: true,
       elapsedMs: expect.any(Number),
@@ -712,5 +715,179 @@ test("searchFiles clamps limit to 100 and survives a failing search", async () =
     type: "result",
     id: 3,
     error: { code: "sessionError", message: "disk gone" },
+  });
+});
+
+const summary = (id: string, modifiedAt: string, name?: string) => ({
+  id,
+  ...(name && { name }),
+  preview: `first message of ${id}`,
+  modifiedAt,
+  messageCount: 4,
+});
+
+test("getSessions lists the recent sessions, newest first, and marks the current one", async () => {
+  const gateway = new FakeGateway();
+  gateway.sessionList = [
+    summary("s2", "2025-01-02T00:00:00.000Z", "Refactor"),
+    summary("s1", "2025-01-01T00:00:00.000Z"),
+  ];
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "getSessions", {}));
+
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    result: { sessions: gateway.sessionList, currentId: "s1" },
+  });
+});
+
+test("getSessions returns only the 30 most recent sessions", async () => {
+  const gateway = new FakeGateway();
+  gateway.sessionList = Array.from({ length: 40 }, (_, i) =>
+    summary(`s${i}`, "2025-01-01T00:00:00.000Z")
+  );
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "getSessions", {}));
+
+  expect(await c.next()).toMatchObject({
+    result: { sessions: gateway.sessionList.slice(0, 30) },
+  });
+});
+
+test("newSession switches every client to an empty transcript of the new session", async () => {
+  const gateway = new FakeGateway();
+  gateway.messages = [{ role: "user", text: "old" }];
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "newSession", {}));
+
+  expect(await c.next()).toEqual(
+    wire(1, "transcript", {
+      sessionId: "new-1",
+      messages: [],
+      running: false,
+      steering: [],
+      followUp: [],
+    })
+  );
+  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
+});
+
+test("switchSession shows the target session's transcript and restarts the replay cursor", async () => {
+  const gateway = new FakeGateway();
+  gateway.sessionList = [
+    summary("s1", "2025-01-02T00:00:00.000Z"),
+    summary("s2", "2025-01-01T00:00:00.000Z"),
+  ];
+  gateway.histories.s2 = [{ role: "user", text: "from s2" }];
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+  const c = await resume(b, 0);
+  await c.next(); // snapshot of s1 at seq 2
+
+  c.send(command(2, "switchSession", { id: "s2" }));
+
+  expect(await c.next()).toEqual(
+    wire(3, "transcript", {
+      sessionId: "s2",
+      messages: [{ role: "user", text: "from s2" }],
+      running: false,
+      steering: [],
+      followUp: [],
+    })
+  );
+  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
+
+  // A client that last saw s1 must not replay across the switch.
+  const stale = await resume(b, 2);
+  expect(await stale.next()).toMatchObject({
+    seq: 3,
+    name: "transcript",
+    data: { sessionId: "s2" },
+  });
+  // A client that saw the switch resumes live.
+  const current = await resume(b, 3);
+  gateway.emit({ name: "userMessage", text: "next" });
+  expect(await current.next()).toMatchObject({ seq: 4, name: "userMessage" });
+});
+
+test("switching sessions is refused for an unknown id, bad params, or an active run", async () => {
+  const gateway = new FakeGateway();
+  gateway.sessionList = [summary("s1", "2025-01-01T00:00:00.000Z")];
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "switchSession", { id: "nope" }));
+  expect(await c.next()).toMatchObject({
+    id: 2,
+    error: { code: "unknownSession" },
+  });
+
+  c.send(command(3, "switchSession", {}));
+  expect(await c.next()).toMatchObject({
+    id: 3,
+    error: { code: "invalidParams" },
+  });
+
+  gateway.emit({ name: "runStarted" });
+  await c.next();
+  c.send(command(4, "switchSession", { id: "s1" }));
+  expect(await c.next()).toMatchObject({ id: 4, error: { code: "runActive" } });
+  c.send(command(5, "newSession", {}));
+  expect(await c.next()).toMatchObject({ id: 5, error: { code: "runActive" } });
+  expect(gateway.sessionSwitches).toEqual([]);
+});
+
+test("getStats reports the session's counts and the runs measured by the bridge", async () => {
+  const gateway = new FakeGateway();
+  gateway.statistics = {
+    userMessages: 2,
+    assistantMessages: 3,
+    toolCalls: 5,
+    tokens: 1200,
+    cost: 0.25,
+  };
+  const c = await ready(await bridge(undefined, gateway));
+  for (let i = 0; i < 2; i++) {
+    gateway.emit({ name: "runStarted" });
+    gateway.emit({ name: "runSettled", stopReason: "success" });
+    await c.next();
+    await c.next();
+  }
+
+  c.send(command(2, "getStats", {}));
+
+  expect(await c.next()).toMatchObject({
+    id: 2,
+    result: {
+      userMessages: 2,
+      assistantMessages: 3,
+      toolCalls: 5,
+      tokens: 1200,
+      cost: 0.25,
+      runs: 2,
+    },
+  });
+});
+
+test("run stats restart with each session", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+  await c.next();
+  await c.next();
+
+  c.send(command(2, "newSession", {}));
+  await c.next();
+  await c.next();
+  c.send(command(3, "getStats", {}));
+
+  expect(await c.next()).toMatchObject({
+    id: 3,
+    result: { runs: 0, runDurationMs: 0 },
   });
 });

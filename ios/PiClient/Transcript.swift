@@ -5,7 +5,8 @@ import Foundation
 /// `entries` is the timeline: messages, the tool calls each turn made, and how each run ended.
 /// Streamed `delta`s grow a provisional assistant message; its `messageEnd` replaces it with the
 /// authoritative text, and a `transcript` snapshot replaces everything (snapshots carry neither
-/// tool calls nor past runs, so those only appear for what was seen live or replayed).
+/// tool calls nor past runs, so those only appear for what was seen live or replayed). Switching
+/// session arrives as such a snapshot, which also moves the cursor to the new session's `seq`.
 /// `lastSeq` is the replay cursor to present on the next (re)connect.
 struct Transcript: Equatable, Sendable {
   struct Message: Equatable, Identifiable, Sendable {
@@ -80,6 +81,8 @@ struct Transcript: Equatable, Sendable {
   private(set) var runStartedAt: Date?
   /// What is waiting to be delivered to the agent.
   private(set) var queue = Queue()
+  /// The session shown, as of the latest snapshot; nil before the first.
+  private(set) var sessionId: String?
   /// `seq` of the newest event applied; 0 before any.
   private(set) var lastSeq = 0
 
@@ -98,6 +101,7 @@ struct Transcript: Equatable, Sendable {
     guard record.type == "event", let seq = record.seq, let name = record.name else { return }
     let data = record.data
     if name == "transcript" {
+      sessionId = data?.sessionId
       replaceAll(with: data?.messages ?? [], runningFor: data?.running == true ? data?.elapsedMs ?? 0 : nil, now: now)
       queue = Queue(data)
     } else if seq > lastSeq {

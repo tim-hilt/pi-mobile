@@ -1,7 +1,9 @@
 import type {
   GatewayEvent,
+  GatewayStats,
   QueuedMessages,
   SessionGateway,
+  SessionSummary,
   SkillInfo,
   TranscriptMessage,
 } from "./gateway.js";
@@ -19,7 +21,23 @@ export class FakeGateway implements SessionGateway {
   files: string[] = [];
   /** The `(query, limit)` of every `searchFiles` call. */
   readonly searches: Array<[string, number]> = [];
+  /** What `sessions()` reports; tests set it to the stored sessions they want listed. */
+  sessionList: SessionSummary[] = [];
+  /** Transcripts of stored sessions by id; a switch loads one into `messages`. */
+  readonly histories: Record<string, TranscriptMessage[]> = {};
+  /** Ids passed to `switchSession`, in call order. */
+  readonly sessionSwitches: string[] = [];
+  /** What `stats()` reports. */
+  statistics: GatewayStats = {
+    userMessages: 0,
+    assistantMessages: 0,
+    toolCalls: 0,
+    tokens: 0,
+    cost: 0,
+  };
   aborts = 0;
+  private current = "s1";
+  private created = 0;
   /** What `queue()` reports; tests set it to the pending messages they want snapshotted. */
   pending: QueuedMessages = { steering: [], followUp: [] };
   /** When set, the next call to `prompt`, `steer`, `followUp` or `abort` rejects with it. */
@@ -55,6 +73,35 @@ export class FakeGateway implements SessionGateway {
     this.searches.push([query, limit]);
     return this.files.filter((f) => f.includes(query)).slice(0, limit);
   };
+
+  sessionId = () => this.current;
+
+  sessions = async () => this.sessionList;
+
+  /** Like pi, starts an empty session (listed first) and announces the change. */
+  newSession = async () => {
+    this.current = `new-${++this.created}`;
+    this.messages = [];
+    this.sessionList = [
+      {
+        id: this.current,
+        preview: "",
+        modifiedAt: new Date(0).toISOString(),
+        messageCount: 0,
+      },
+      ...this.sessionList,
+    ];
+    this.emit({ name: "sessionChanged" });
+  };
+
+  switchSession = async (id: string) => {
+    this.sessionSwitches.push(id);
+    this.current = id;
+    this.messages = this.histories[id] ?? [];
+    this.emit({ name: "sessionChanged" });
+  };
+
+  stats = () => this.statistics;
 
   subscribe(listener: (event: GatewayEvent) => void): () => void {
     this.listeners.add(listener);

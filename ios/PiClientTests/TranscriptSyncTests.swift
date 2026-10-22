@@ -153,6 +153,26 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(client.transcript.lastSeq == 0)
   }
 
+  @Test func aLiveSnapshotFromASessionSwitchReplacesTheConversationAndMovesTheCursor() async throws {
+    let (client, bridge, _) = try await connect { _, _, peer in
+      peer.send(ack)
+      peer.send(
+        event(
+          5, "transcript", #"{"sessionId":"a","running":false,"messages":[{"role":"user","text":"in a"}]}"#))
+      peer.send(event(6, "runStarted", "{}") + event(7, "toolCall", #"{"phase":"start","toolCallId":"t","toolName":"bash"}"#))
+      peer.send(
+        event(
+          8, "transcript", #"{"sessionId":"b","running":false,"messages":[{"role":"user","text":"in b"}]}"#))
+    }
+    defer { bridge.stop() }
+
+    await waitUntil("switch snapshot") { client.transcript.lastSeq == 8 }
+    #expect(client.transcript.sessionId == "b")
+    #expect(lines(client.transcript) == ["user: in b"])
+    #expect(client.transcript.toolCalls.isEmpty)
+    #expect(!client.transcript.isRunning)
+  }
+
   @Test func connectingToADifferentBridgeStartsFromScratch() async throws {
     let (client, bridge, _) = try await connect { _, _, peer in
       peer.send(ack)

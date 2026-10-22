@@ -36,7 +36,7 @@ A record that is not valid JSON or not a well-formed `command` → `error` recor
 - On connect the app sends its last-seen `seq` (`lastSeq`, `0` if none; a missing or invalid value counts as `0`). Right after the `hello` result the bridge sends the catch-up, then streams live without gaps:
   - `lastSeq` ≥ 1 and the bridge still retains every event after it (last 1000 by default) → exactly the events with `seq > lastSeq`.
   - Otherwise — fresh client (`0`), cursor too old, or cursor ahead of the bridge's `seq` (bridge restarted) → one `transcript` snapshot instead.
-- The app adopts a `transcript` event as authoritative: it replaces everything it held and its `seq` becomes the new cursor. A snapshot does not consume a `seq`; it carries the `seq` of the latest event it reflects.
+- The app adopts a `transcript` event as authoritative: it replaces everything it held and its `seq` becomes the new cursor. A catch-up snapshot does not consume a `seq`; it carries the `seq` of the latest event it reflects. A session switch (see `newSession`) sends a live `transcript` that does take a fresh `seq` and empties the replay log, so a cursor from before the switch always gets a snapshot.
 
 ## Versioning
 
@@ -50,7 +50,7 @@ After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloud
 
 ## Commands
 
-`hello`, `prompt`, `abort`, `newSession`, `switchSession`, `getSessions`, `getStats`, `listSkills`, `searchFiles`. Only `hello`, `prompt`, `abort`, `clearQueue`, `listSkills` and `searchFiles` are specified so far; params and results of the rest are specified by the issue that implements each.
+`hello`, `prompt`, `abort`, `clearQueue`, `getSessions`, `newSession`, `switchSession`, `getStats`, `listSkills`, `searchFiles`.
 
 ### `prompt`
 
@@ -68,6 +68,18 @@ Params `{}`. Result `{}`. Stops the active run, which then settles with `stopRea
 
 Params `{}`. Result `{ steering: string[], followUp: string[] }` — the queued texts that were dropped, so the app can hand them back to the user. A `queue` event follows.
 
+### `getSessions`
+
+Params `{}`. Result `{ sessions, currentId }` — the 30 most recently modified stored sessions, newest first, as `{ id, name?, preview, modifiedAt, messageCount }` (`name` is the user-given name; `preview` the first user message; `modifiedAt` ISO 8601). `currentId` is the session now driven; it is absent from `sessions` while it is still empty (pi stores a session with its first message).
+
+### `newSession` / `switchSession`
+
+`newSession` params `{}`; `switchSession` params `{ id: string }` (an `id` from `getSessions`; switching to the current session is a no-op). Result `{}`. On success every connected client receives a `transcript` event for the new session (a fresh `seq`, see above) before the result. Both are refused while a run is active (`runActive`; abort first). `switchSession` with an unknown `id` → `unknownSession`; bad params → `invalidParams`; pi refusing the change → `sessionError`.
+
+### `getStats`
+
+Params `{}`. Result for the current session: `{ userMessages, assistantMessages, toolCalls, tokens, cost, runs, runDurationMs }`. The first five come from pi and cover the whole session (`tokens` is the total, `cost` its price). `runs` and `runDurationMs` (total) count the runs the bridge has seen settle since the session became current; they restart on every session switch.
+
 ### `listSkills`
 
 Params `{}`. Result `{ skills: { name, description }[] }` — the session's skills. Invoke one by sending `prompt` text `/skill:<name>` optionally followed by a space and arguments; the bridge's `userMessage` echoes that text, not the skill's expanded body.
@@ -78,7 +90,7 @@ Params `{ query: string, limit?: integer }` (`limit` default 20, capped at 100).
 
 ## Events
 
-`stats`: payload to be specified by the issue that implements it. Run events, in the order a run emits them:
+Run events, in the order a run emits them:
 
 | `name`        | `data`                                                                                                                              |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -93,7 +105,7 @@ Params `{ query: string, limit?: integer }` (`limit` default 20, capped at 100).
 
 ### `transcript`
 
-`{ messages, running, steering, followUp }` — the whole conversation, oldest first. `messages` entries are `{ role: "user", text }` or `{ role: "assistant", text, thinking }` (completed messages; tool-only turns omitted). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event. Tool calls and past runs' outcomes are not part of a snapshot.
+`{ sessionId, messages, running, steering, followUp }` — `sessionId` is the session shown; the whole conversation, oldest first. `messages` entries are `{ role: "user", text }` or `{ role: "assistant", text, thinking }` (completed messages; tool-only turns omitted). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event. Tool calls and past runs' outcomes are not part of a snapshot.
 
 ### `toolCall`
 

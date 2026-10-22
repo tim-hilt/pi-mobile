@@ -157,6 +157,35 @@ function serve(ws: WebSocket, pingIntervalMs: number, session: Session): void {
       case "clearQueue":
         await respond(async () => session.clearQueue());
         break;
+      case "getSessions":
+        await respond(() => session.sessions());
+        break;
+      case "newSession":
+        await respond(async () => {
+          await session.newSession();
+          return {};
+        });
+        break;
+      case "switchSession": {
+        const { id: sessionId } = params;
+        if (typeof sessionId !== "string") {
+          reply({
+            error: {
+              code: "invalidParams",
+              message: "switchSession requires string id",
+            },
+          });
+          break;
+        }
+        await respond(async () => {
+          await session.switchSession(sessionId);
+          return {};
+        });
+        break;
+      }
+      case "getStats":
+        await respond(async () => session.stats());
+        break;
       case "listSkills":
         await respond(async () => ({ skills: session.skills() }));
         break;

@@ -1,4 +1,11 @@
-import { createAgentSession } from "@earendil-works/pi-coding-agent";
+import {
+  createAgentSessionFromServices,
+  createAgentSessionRuntime,
+  createAgentSessionServices,
+  getAgentDir,
+  SessionManager,
+  type CreateAgentSessionRuntimeFactory,
+} from "@earendil-works/pi-coding-agent";
 import { PiGateway } from "./piGateway.js";
 import { startBridge } from "./server.js";
 
@@ -16,8 +23,28 @@ if (!token) {
 }
 
 const cwd = process.cwd();
-const { session } = await createAgentSession({ cwd });
-const gateway = new PiGateway(session, cwd);
+const createRuntime: CreateAgentSessionRuntimeFactory = async ({
+  cwd,
+  sessionManager,
+  sessionStartEvent,
+}) => {
+  const services = await createAgentSessionServices({ cwd });
+  return {
+    ...(await createAgentSessionFromServices({
+      services,
+      sessionManager,
+      sessionStartEvent,
+    })),
+    services,
+    diagnostics: services.diagnostics,
+  };
+};
+const runtime = await createAgentSessionRuntime(createRuntime, {
+  cwd,
+  agentDir: getAgentDir(),
+  sessionManager: SessionManager.create(cwd),
+});
+const gateway = new PiGateway(runtime, cwd);
 const bridge = await startBridge({
   token,
   port: Number(process.env.PI_BRIDGE_PORT ?? 8787),
@@ -27,7 +54,7 @@ console.log(`pi bridge listening on ${bridge.host}:${bridge.port}`);
 
 const shutdown = async () => {
   await bridge.close();
-  gateway.dispose();
+  await gateway.dispose();
   process.exit(0);
 };
 process.on("SIGINT", shutdown);

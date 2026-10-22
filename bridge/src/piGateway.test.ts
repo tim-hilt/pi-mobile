@@ -8,8 +8,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
+import type { SessionInfo } from "@earendil-works/pi-coding-agent";
 import type { GatewayEvent } from "./gateway.js";
-import { PiGateway, type PiSession } from "./piGateway.js";
+import { PiGateway, type PiRuntime, type PiSession } from "./piGateway.js";
 
 /**
  * Stands in for pi's `AgentSession`: records calls and lets a test emit the
@@ -23,7 +24,16 @@ class FakePiSession implements PiSession {
   steeringQueue: string[] = [];
   followUpQueue: string[] = [];
   aborts = 0;
-  disposed = false;
+  /** What pi reports as this session's identity. */
+  sessionId = "s1";
+  /** What pi's `getSessionStats()` reports; only the fields the bridge reads. */
+  stats = {
+    userMessages: 0,
+    assistantMessages: 0,
+    toolCalls: 0,
+    tokens: { total: 0 },
+    cost: 0,
+  };
   /** What pi's resource loader reports for skills. */
   skills: Array<{ name: string; description: string; filePath: string }> = [];
   resourceLoader = {
@@ -67,21 +77,63 @@ class FakePiSession implements PiSession {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
-  dispose = () => {
-    this.disposed = true;
-  };
+  getSessionStats = () =>
+    this.stats as ReturnType<PiSession["getSessionStats"]>;
 
   emit(event: unknown): void {
     for (const listener of this.listeners) listener(event as AgentSessionEvent);
   }
 }
 
-function setup() {
+/**
+ * Stands in for pi's `AgentSessionRuntime`: replacing the session installs
+ * `next` as the active one, as pi does after tearing the old one down.
+ */
+class FakePiRuntime implements PiRuntime {
+  next = new FakePiSession();
+  /** Paths passed to `switchSession`. */
+  readonly switches: string[] = [];
+  disposed = false;
+  /** When set, replacing the session reports it cancelled (an extension vetoed it). */
+  cancel = false;
+
+  constructor(public session: FakePiSession) {}
+
+  newSession = async () => this.replace();
+  switchSession = async (path: string) => {
+    this.switches.push(path);
+    return this.replace();
+  };
+  dispose = async () => {
+    this.disposed = true;
+  };
+
+  private replace() {
+    if (this.cancel) return { cancelled: true };
+    this.session = this.next;
+    return { cancelled: false };
+  }
+}
+
+const info = (id: string, extra: Partial<SessionInfo> = {}): SessionInfo => ({
+  path: `/sessions/${id}.jsonl`,
+  id,
+  cwd: "/work",
+  created: new Date("2025-01-01T00:00:00Z"),
+  modified: new Date("2025-01-02T03:04:05Z"),
+  messageCount: 3,
+  firstMessage: `hello from ${id}`,
+  allMessagesText: "",
+  ...extra,
+});
+
+function setup(stored: SessionInfo[] = []) {
   const pi = new FakePiSession();
-  const gateway = new PiGateway(pi, process.cwd());
+  const runtime = new FakePiRuntime(pi);
+  const gateway = new PiGateway(runtime, process.cwd(), async () => stored);
   const events: GatewayEvent[] = [];
   gateway.subscribe((event) => events.push(event));
-  return { pi, gateway, events };
+  return { pi, runtime, gateway, events };
 }
 
 const textDelta = (delta: string) => ({
@@ -331,12 +383,12 @@ test("steer and follow-up are forwarded to pi's queues", async () => {
   expect(pi.followUps).toEqual(["after"]);
 });
 
-test("dispose stops event delivery and disposes the pi session", async () => {
-  const { pi, gateway, events } = setup();
-  gateway.dispose();
+test("dispose stops event delivery and disposes the pi runtime", async () => {
+  const { pi, runtime, gateway, events } = setup();
+  await gateway.dispose();
   pi.emit({ type: "agent_start" });
 
-  expect(pi.disposed).toBe(true);
+  expect(runtime.disposed).toBe(true);
   expect(events).toEqual([]);
 });
 
@@ -396,7 +448,7 @@ test("skills are the ones pi's resource loader discovered, by name and descripti
 test("file search covers the session's working directory", async () => {
   const dir = mkdtempSync(join(tmpdir(), "pi-gw-"));
   writeFileSync(join(dir, "notes.md"), "");
-  const gateway = new PiGateway(new FakePiSession(), dir);
+  const gateway = new PiGateway(new FakePiRuntime(new FakePiSession()), dir);
 
   expect(await gateway.searchFiles("note", 5)).toEqual(["notes.md"]);
 
@@ -427,4 +479,111 @@ test("an invoked skill shows as the command the user typed, not its expanded bod
   expect(gateway.transcript()).toEqual([
     { role: "user", text: "/skill:tdd add login" },
   ]);
+});
+
+test("sessions are the stored ones as summaries, with names where given", async () => {
+  const { gateway } = setup([
+    info("s2", { name: "Refactor" }),
+    info("s1", { messageCount: 7 }),
+  ]);
+
+  expect(await gateway.sessions()).toEqual([
+    {
+      id: "s2",
+      name: "Refactor",
+      preview: "hello from s2",
+      modifiedAt: "2025-01-02T03:04:05.000Z",
+      messageCount: 3,
+    },
+    {
+      id: "s1",
+      preview: "hello from s1",
+      modifiedAt: "2025-01-02T03:04:05.000Z",
+      messageCount: 7,
+    },
+  ]);
+});
+
+test("the session id and stats are read through to pi", () => {
+  const { pi, gateway } = setup();
+  pi.sessionId = "abc";
+  pi.stats = {
+    userMessages: 2,
+    assistantMessages: 3,
+    toolCalls: 5,
+    tokens: { total: 1200 },
+    cost: 0.25,
+  };
+
+  expect(gateway.sessionId()).toBe("abc");
+  expect(gateway.stats()).toEqual({
+    userMessages: 2,
+    assistantMessages: 3,
+    toolCalls: 5,
+    tokens: 1200,
+    cost: 0.25,
+  });
+});
+
+test("switching sessions follows the new pi session and forgets the old one", async () => {
+  const { pi, runtime, gateway, events } = setup([info("s1"), info("s2")]);
+  runtime.next.sessionId = "s2";
+  runtime.next.messages = [{ role: "user", content: "from s2" } as never];
+
+  await gateway.switchSession("s2");
+
+  expect(runtime.switches).toEqual(["/sessions/s2.jsonl"]);
+  expect(events).toEqual([{ name: "sessionChanged" }]);
+  expect(gateway.sessionId()).toBe("s2");
+  expect(gateway.transcript()).toEqual([{ role: "user", text: "from s2" }]);
+
+  events.length = 0;
+  pi.emit({ type: "agent_start" });
+  runtime.next.emit({ type: "queue_update", steering: ["x"], followUp: [] });
+  expect(events).toEqual([{ name: "queue", steering: ["x"], followUp: [] }]);
+});
+
+test("a new session is followed the same way", async () => {
+  const { pi, runtime, gateway, events } = setup();
+  runtime.next.sessionId = "fresh";
+
+  await gateway.newSession();
+
+  expect(events).toEqual([{ name: "sessionChanged" }]);
+  expect(gateway.sessionId()).toBe("fresh");
+  events.length = 0;
+  pi.emit({ type: "agent_start" });
+  expect(events).toEqual([]);
+});
+
+test("a run interrupted by a switch does not stop the next session's run from starting", async () => {
+  const { runtime, gateway, events } = setup([info("s2")]);
+  await gateway.prompt("hi");
+
+  await gateway.switchSession("s2");
+  events.length = 0;
+  runtime.next.emit({ type: "agent_start" });
+
+  expect(events).toEqual([{ name: "runStarted" }]);
+});
+
+test.each(["new", "switch"] as const)(
+  "a %s session pi cancels rejects and changes nothing",
+  async (kind) => {
+    const { runtime, gateway, events } = setup([info("s2")]);
+    runtime.cancel = true;
+
+    await expect(
+      kind === "new" ? gateway.newSession() : gateway.switchSession("s2")
+    ).rejects.toThrow("cancelled");
+
+    expect(events).toEqual([]);
+    expect(gateway.sessionId()).toBe("s1");
+  }
+);
+
+test("switching to a session that is not stored rejects", async () => {
+  const { gateway } = setup([info("s1")]);
+
+  await expect(gateway.switchSession("gone")).rejects.toThrow("gone");
 });
