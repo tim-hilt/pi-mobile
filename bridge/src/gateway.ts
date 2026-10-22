@@ -28,8 +28,8 @@ export type TranscriptMessage =
   | { role: "user"; text: string }
   | { role: "assistant"; text: string; thinking: string };
 
-/** How a run ended. `success` is a normal finish. */
-export type StopReason = "success" | "error" | "aborted";
+/** How a run ended. `success` is a normal finish; `length` means the model hit its output limit mid-answer. */
+export type StopReason = "success" | "error" | "aborted" | "length";
 
 /** Session events in the order pi emits them for one run. */
 export type GatewayEvent =

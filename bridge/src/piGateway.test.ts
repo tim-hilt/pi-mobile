@@ -196,7 +196,7 @@ async function settledAfter(
 test("run settled reflects the real stop reason", async () => {
   expect(await settledAfter([assistantEnd([], "length")])).toEqual({
     name: "runSettled",
-    stopReason: "success",
+    stopReason: "length",
   });
   expect(await settledAfter([assistantEnd([], "aborted")])).toEqual({
     name: "runSettled",

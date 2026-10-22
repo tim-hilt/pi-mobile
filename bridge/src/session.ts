@@ -95,10 +95,19 @@ export class Session {
     const messages: Record<string, unknown>[] = [...this.gateway.transcript()];
     if (this.streaming)
       messages.push({ role: "assistant", ...this.streaming, streaming: true });
+    const startedAt = this.runStartedAt;
+    const running = startedAt !== undefined;
     return {
       seq: this.seq,
       name: "transcript",
-      data: { messages, running: this.runStartedAt !== undefined },
+      data: {
+        messages,
+        running,
+        // The app has no other way to learn when a run it joined midway began.
+        ...(running && {
+          elapsedMs: Math.round(performance.now() - startedAt),
+        }),
+      },
     };
   }
 

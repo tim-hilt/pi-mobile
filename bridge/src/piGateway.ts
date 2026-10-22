@@ -178,6 +178,8 @@ export class PiGateway implements SessionGateway {
         stopReason: "error",
         ...(errorMessage !== undefined && { errorMessage }),
       };
+    if (stopReason === "length")
+      return { name: "runSettled", stopReason: "length" };
     return { name: "runSettled", stopReason: "success" };
   }
 

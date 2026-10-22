@@ -2,9 +2,11 @@ import Foundation
 
 /// The conversation as the user reads it, built purely from bridge `event` records.
 ///
+/// `entries` is the timeline: messages, the tool calls each turn made, and how each run ended.
 /// Streamed `delta`s grow a provisional assistant message; its `messageEnd` replaces it with the
-/// authoritative text, and a `transcript` snapshot replaces everything. `lastSeq` is the replay
-/// cursor to present on the next (re)connect.
+/// authoritative text, and a `transcript` snapshot replaces everything (snapshots carry neither
+/// tool calls nor past runs, so those only appear for what was seen live or replayed).
+/// `lastSeq` is the replay cursor to present on the next (re)connect.
 struct Transcript: Equatable, Sendable {
   struct Message: Equatable, Identifiable, Sendable {
     enum Role: Sendable { case user, assistant }
@@ -12,69 +14,179 @@ struct Transcript: Equatable, Sendable {
     let id: Int
     let role: Role
     fileprivate(set) var text: String
+    /// The reasoning trace of this turn.
     fileprivate(set) var thinking: String
     /// Still being generated: `text` is the deltas so far, not yet authoritative.
     fileprivate(set) var isStreaming: Bool
   }
 
-  private(set) var messages: [Message] = []
-  /// Whether the agent is working on a run right now.
-  private(set) var isRunning = false
+  /// One tool execution, as a card.
+  struct ToolCall: Equatable, Identifiable, Sendable {
+    enum Status: Sendable { case running, succeeded, failed }
+
+    let id: Int
+    /// The bridge's `toolCallId`, tying start, update and end together.
+    let callId: String
+    let name: String
+    fileprivate(set) var args: JSONValue?
+    /// Output so far while running, the full output once finished.
+    fileprivate(set) var output = ""
+    fileprivate(set) var status = Status.running
+    /// Nil until finished, and for a tool that never ran.
+    fileprivate(set) var durationMs: Int?
+  }
+
+  enum StopReason: String, Sendable {
+    case success, error, aborted
+    /// The model hit its output limit mid-answer.
+    case length
+  }
+
+  /// How a finished run ended.
+  struct Run: Equatable, Identifiable, Sendable {
+    let id: Int
+    let stopReason: StopReason
+    let durationMs: Int
+    let errorMessage: String?
+  }
+
+  enum Entry: Equatable, Identifiable, Sendable {
+    case message(Message)
+    case toolCall(ToolCall)
+    case run(Run)
+
+    var id: Int {
+      switch self {
+      case .message(let message): message.id
+      case .toolCall(let call): call.id
+      case .run(let run): run.id
+      }
+    }
+  }
+
+  private(set) var entries: [Entry] = []
+  /// When the active run began, or nil when idle. For a run joined midway it is reconstructed
+  /// from the snapshot; a run replayed after a reconnect is dated from its replay.
+  private(set) var runStartedAt: Date?
   /// `seq` of the newest event applied; 0 before any.
   private(set) var lastSeq = 0
 
   private var nextId = 0
 
-  /// Applies one record; anything that is not an event is ignored. Events at or below `lastSeq`
-  /// (already seen, e.g. replayed twice) are skipped, except snapshots, which are authoritative
-  /// and may legitimately carry a lower `seq` after a bridge restart.
-  mutating func apply(_ record: Record) {
+  /// Whether the agent is working on a run right now.
+  var isRunning: Bool { runStartedAt != nil }
+  var messages: [Message] { entries.compactMap { if case .message(let m) = $0 { m } else { nil } } }
+  var toolCalls: [ToolCall] { entries.compactMap { if case .toolCall(let c) = $0 { c } else { nil } } }
+  var runs: [Run] { entries.compactMap { if case .run(let r) = $0 { r } else { nil } } }
+
+  /// Applies one record received at `now`; anything that is not an event is ignored. Events at or
+  /// below `lastSeq` (already seen, e.g. replayed twice) are skipped, except snapshots, which are
+  /// authoritative and may legitimately carry a lower `seq` after a bridge restart.
+  mutating func apply(_ record: Record, now: Date = .now) {
     guard record.type == "event", let seq = record.seq, let name = record.name else { return }
     let data = record.data
     if name == "transcript" {
-      replaceAll(with: data?.messages ?? [], running: data?.running ?? false)
+      replaceAll(with: data?.messages ?? [], runningFor: data?.running == true ? data?.elapsedMs ?? 0 : nil, now: now)
     } else if seq > lastSeq {
       switch name {
-      case "runStarted": isRunning = true
+      case "runStarted": runStartedAt = now
       case "delta": appendDelta(kind: data?.kind, text: data?.text ?? "")
       case "messageEnd": finishMessage(text: data?.text ?? "", thinking: data?.thinking ?? "")
-      case "runSettled":
-        isRunning = false
-        if let last = messages.indices.last { messages[last].isStreaming = false }
+      case "toolCall": if let data { applyToolCall(data) }
+      case "runSettled": settleRun(data)
       default: break
       }
     }
     lastSeq = seq
   }
 
-  private mutating func replaceAll(with wire: [Record.EventData.WireMessage], running: Bool) {
-    messages = []
+  /// `runningFor` is how long the active run has been going, nil if idle.
+  private mutating func replaceAll(
+    with wire: [Record.EventData.WireMessage], runningFor elapsedMs: Int?, now: Date
+  ) {
+    entries = []
     for message in wire {
       var next = makeMessage(
         message.role == "user" ? .user : .assistant, text: message.text,
         thinking: message.thinking ?? "")
       next.isStreaming = message.streaming ?? false
-      messages.append(next)
+      entries.append(.message(next))
     }
-    isRunning = running
+    runStartedAt = elapsedMs.map { now.addingTimeInterval(-Double($0) / 1000) }
   }
 
   private mutating func appendDelta(kind: String?, text: String) {
-    if messages.last?.isStreaming != true {
-      messages.append(makeMessage(.assistant, text: "", thinking: "", isStreaming: true))
+    let index = streamingIndex ?? appendStreamingMessage()
+    editMessage(at: index) { message in
+      if kind == "thinking" { message.thinking += text } else { message.text += text }
     }
-    let last = messages.count - 1
-    if kind == "thinking" { messages[last].thinking += text } else { messages[last].text += text }
   }
 
   private mutating func finishMessage(text: String, thinking: String) {
-    if let last = messages.indices.last, messages[last].isStreaming {
-      messages[last].text = text
-      messages[last].thinking = thinking
-      messages[last].isStreaming = false
-    } else {
-      messages.append(makeMessage(.assistant, text: text, thinking: thinking))
+    if let index = streamingIndex {
+      editMessage(at: index) {
+        $0.text = text
+        $0.thinking = thinking
+        $0.isStreaming = false
+      }
+    } else if !text.isEmpty || !thinking.isEmpty {  // a turn that only called tools shows nothing
+      entries.append(.message(makeMessage(.assistant, text: text, thinking: thinking)))
     }
+  }
+
+  /// Applies a tool phase to its card, creating the card if its `start` was never seen
+  /// (e.g. the snapshot this client joined from was taken mid-call).
+  private mutating func applyToolCall(_ data: Record.EventData) {
+    guard let callId = data.toolCallId else { return }
+    let index = toolCallIndex(callId) ?? appendToolCall(callId: callId, name: data.toolName ?? "")
+    guard case .toolCall(var call) = entries[index] else { return }
+    if let args = data.args { call.args = args }
+    if let output = data.output { call.output = output }
+    if data.phase == "end" {
+      call.status = data.isError == true ? .failed : .succeeded
+      call.durationMs = data.durationMs
+    }
+    entries[index] = .toolCall(call)
+  }
+
+  private mutating func settleRun(_ data: Record.EventData?) {
+    runStartedAt = nil
+    if let index = streamingIndex { editMessage(at: index) { $0.isStreaming = false } }
+    // A reason this app does not know is surfaced as an error rather than as a success.
+    let reason = data?.stopReason.flatMap(StopReason.init) ?? .error
+    defer { nextId += 1 }
+    entries.append(
+      .run(
+        Run(
+          id: nextId, stopReason: reason, durationMs: data?.durationMs ?? 0,
+          errorMessage: data?.errorMessage)))
+  }
+
+  /// A streaming message is always the newest entry: tool calls and runs only follow `messageEnd`.
+  private var streamingIndex: Int? {
+    guard case .message(let message)? = entries.last, message.isStreaming else { return nil }
+    return entries.count - 1
+  }
+
+  private func toolCallIndex(_ callId: String) -> Int? {
+    entries.lastIndex { if case .toolCall(let call) = $0 { call.callId == callId } else { false } }
+  }
+
+  private mutating func appendStreamingMessage() -> Int {
+    entries.append(.message(makeMessage(.assistant, text: "", thinking: "", isStreaming: true)))
+    return entries.count - 1
+  }
+
+  private mutating func appendToolCall(callId: String, name: String) -> Int {
+    entries.append(.toolCall(ToolCall(id: nextId, callId: callId, name: name)))
+    nextId += 1
+    return entries.count - 1
+  }
+
+  private mutating func editMessage(at index: Int, _ edit: (inout Message) -> Void) {
+    guard case .message(var message) = entries[index] else { return }
+    edit(&message)
+    entries[index] = .message(message)
   }
 
   private mutating func makeMessage(

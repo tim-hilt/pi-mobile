@@ -315,6 +315,7 @@ test.each([
   ["success", undefined],
   ["error", "provider exploded"],
   ["aborted", undefined],
+  ["length", undefined],
 ] as const)(
   "run settled carries stop reason %s and the run's duration",
   async (stopReason, errorMessage) => {
@@ -451,6 +452,7 @@ test("a snapshot taken mid-run includes the message still streaming", async () =
         { role: "assistant", text: "Hello", thinking: "hm", streaming: true },
       ],
       running: true,
+      elapsedMs: expect.any(Number),
     })
   );
 
@@ -459,6 +461,27 @@ test("a snapshot taken mid-run includes the message still streaming", async () =
   expect(next).toEqual(
     wire(5, "messageEnd", { text: "Hello!", thinking: "hm" })
   );
+});
+
+test("a snapshot taken mid-run says how long the run has been going", async () => {
+  const gateway = new FakeGateway();
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+
+  const c = await resume(b, 0);
+
+  expect(await c.next()).toMatchObject({
+    name: "transcript",
+    data: { running: true, elapsedMs: expect.any(Number) },
+  });
+});
+
+test("a snapshot taken while idle carries no elapsed time", async () => {
+  const b = await bridge();
+  const c = await resume(b, 0);
+
+  const snapshot = (await c.next()) as { data: object };
+  expect(snapshot.data).not.toHaveProperty("elapsedMs");
 });
 
 test("a snapshot never repeats a message that already ended", async () => {
@@ -472,7 +495,11 @@ test("a snapshot never repeats a message that already ended", async () => {
   const c = await resume(b, 0);
 
   expect(await c.next()).toEqual(
-    wire(3, "transcript", { messages: gateway.messages, running: true })
+    wire(3, "transcript", {
+      messages: gateway.messages,
+      running: true,
+      elapsedMs: expect.any(Number),
+    })
   );
 });
 

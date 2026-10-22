@@ -64,18 +64,18 @@ Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once the br
 
 `stats`: payload to be specified by the issue that implements it. Run events, in the order a run emits them:
 
-| `name`       | `data`                                                                                                           |
-| ------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `runStarted` | `{}`                                                                                                             |
-| `delta`      | `{ kind: "text" \| "thinking", text }` — an increment to append                                                  |
-| `messageEnd` | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                  |
-| `runSettled` | `{ stopReason: "success" \| "error" \| "aborted", durationMs, errorMessage? }` — pi will not continue on its own |
+| `name`       | `data`                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `runStarted` | `{}`                                                                                                                         |
+| `delta`      | `{ kind: "text" \| "thinking", text }` — an increment to append                                                              |
+| `messageEnd` | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                              |
+| `runSettled` | `{ stopReason: "success" \| "error" \| "aborted" \| "length", durationMs, errorMessage? }` — pi will not continue on its own |
 
-`durationMs` is measured by the bridge from `runStarted` to `runSettled`. `runStarted` is sent as soon as pi accepts a prompt. `stopReason` is `error` (with `errorMessage`) when the run's final assistant message failed, `aborted` when it was aborted, else `success`; failures a retry recovered from do not count.
+`durationMs` is measured by the bridge from `runStarted` to `runSettled`. `runStarted` is sent as soon as pi accepts a prompt. `stopReason` is `error` (with `errorMessage`) when the run's final assistant message failed, `aborted` when it was aborted, `length` when it ended because the model hit its output limit, else `success`; failures a retry recovered from do not count.
 
 ### `transcript`
 
-`{ messages, running }` — the whole conversation, oldest first. `messages` entries are `{ role: "user", text }` or `{ role: "assistant", text, thinking }` (completed messages; tool-only turns omitted). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active.
+`{ messages, running }` — the whole conversation, oldest first. `messages` entries are `{ role: "user", text }` or `{ role: "assistant", text, thinking }` (completed messages; tool-only turns omitted). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. Tool calls and past runs' outcomes are not part of a snapshot.
 
 ### `toolCall`
 

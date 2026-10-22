@@ -164,4 +164,115 @@ private func lines(_ transcript: Transcript) -> [String] {
     client.connect(to: BridgeConfig(url: bridge.url, token: "t2"))
     #expect(client.transcript == Transcript())
   }
+
+  // MARK: Reasoning traces, tool calls, runs
+
+  @Test func toolCallsAppearAfterTheTurnThatCalledThemAndCarryTheirOutcome() async throws {
+    let (client, bridge, _) = try await connect { _, _, peer in
+      peer.send(ack)
+      peer.send(event(1, "runStarted", "{}"))
+      peer.send(event(2, "messageEnd", #"{"text":"","thinking":"plan"}"#))
+      peer.send(
+        event(
+          3, "toolCall",
+          #"{"phase":"start","toolCallId":"t1","toolName":"bash","args":{"command":"ls"}}"#))
+      peer.send(
+        event(4, "toolCall", #"{"phase":"update","toolCallId":"t1","toolName":"bash","output":"a"}"#))
+      peer.send(
+        event(
+          5, "toolCall",
+          #"{"phase":"end","toolCallId":"t1","toolName":"bash","output":"a\nb","isError":false,"durationMs":42}"#
+        ))
+      peer.send(event(6, "messageEnd", #"{"text":"Done","thinking":""}"#))
+    }
+    defer { bridge.stop() }
+
+    await waitUntil("turn after tool") { client.transcript.lastSeq == 6 }
+    #expect(entryKinds(client.transcript) == ["message", "tool", "message"])
+    #expect(client.transcript.messages.map(\.thinking) == ["plan", ""])
+    let call = try #require(client.transcript.toolCalls.first)
+    #expect(call.name == "bash")
+    #expect(call.args?.formatted.contains(#""command" : "ls""#) == true)
+    #expect(call.output == "a\nb")
+    #expect(call.status == .succeeded)
+    #expect(call.durationMs == 42)
+  }
+
+  @Test func aToolCallInFlightShowsItsOutputSoFarAndAFailedOneIsMarked() async throws {
+    let (client, bridge, _) = try await connect { _, _, peer in
+      peer.send(ack)
+      peer.send(
+        event(1, "toolCall", #"{"phase":"start","toolCallId":"t1","toolName":"read","args":{}}"#))
+      peer.send(
+        event(2, "toolCall", #"{"phase":"update","toolCallId":"t1","toolName":"read","output":"par"}"#))
+      peer.send(
+        event(3, "toolCall", #"{"phase":"start","toolCallId":"t2","toolName":"bash","args":{}}"#))
+      peer.send(
+        event(
+          4, "toolCall",
+          #"{"phase":"end","toolCallId":"t2","toolName":"bash","output":"boom","isError":true}"#))
+    }
+    defer { bridge.stop() }
+
+    await waitUntil("tool events") { client.transcript.lastSeq == 4 }
+    let calls = client.transcript.toolCalls
+    #expect(calls.map(\.status) == [.running, .failed])
+    #expect(calls.map(\.output) == ["par", "boom"])
+    #expect(calls[1].durationMs == nil)
+  }
+
+  @Test func theCurrentRunIsTimedFromItsStartAndSettlingEndsIt() async throws {
+    let (client, bridge, _) = try await connect { _, _, peer in
+      peer.send(ack)
+      peer.send(event(1, "transcript", #"{"running":true,"elapsedMs":60000,"messages":[]}"#))
+    }
+    defer { bridge.stop() }
+
+    await waitUntil("running snapshot") { client.transcript.isRunning }
+    let elapsed = Date.now.timeIntervalSince(try #require(client.transcript.runStartedAt))
+    #expect((60..<65).contains(elapsed))
+
+    let (live, liveBridge, _) = try await connect { _, _, peer in
+      peer.send(ack)
+      peer.send(event(1, "runStarted", "{}"))
+    }
+    defer { liveBridge.stop() }
+    await waitUntil("run started") { live.transcript.isRunning }
+    #expect(Date.now.timeIntervalSince(try #require(live.transcript.runStartedAt)) < 5)
+  }
+
+  @Test(arguments: [
+    ("success", Transcript.StopReason.success, ""),
+    ("error", .error, ",\"errorMessage\":\"401\""),
+    ("aborted", .aborted, ""),
+    ("length", .length, ""),
+  ])
+  func aSettledRunRecordsItsDurationAndHowItEnded(
+    wire: String, expected: Transcript.StopReason, extra: String
+  ) async throws {
+    let (client, bridge, _) = try await connect { _, _, peer in
+      peer.send(ack)
+      peer.send(event(1, "runStarted", "{}"))
+      peer.send(event(2, "runSettled", #"{"stopReason":"\#(wire)","durationMs":65000\#(extra)}"#))
+    }
+    defer { bridge.stop() }
+
+    await waitUntil("settled") { client.transcript.lastSeq == 2 }
+    #expect(!client.transcript.isRunning)
+    #expect(client.transcript.runStartedAt == nil)
+    let run = try #require(client.transcript.runs.first)
+    #expect(run.stopReason == expected)
+    #expect(run.durationMs == 65000)
+    #expect(run.errorMessage == (extra.isEmpty ? nil : "401"))
+  }
+}
+
+private func entryKinds(_ transcript: Transcript) -> [String] {
+  transcript.entries.map {
+    switch $0 {
+    case .message: "message"
+    case .toolCall: "tool"
+    case .run: "run"
+    }
+  }
 }
