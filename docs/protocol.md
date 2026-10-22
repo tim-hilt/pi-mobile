@@ -6,7 +6,7 @@ Source of truth for the contract between `bridge/` and `ios/`. Both sides test a
 
 ## Transport
 
-WebSocket. Each text frame is one JSON object (a _record_); records are newline-terminated (`\n`) and a frame may carry several. Every connection and upgrade request carries `Authorization: Bearer <token>`; otherwise the bridge rejects it.
+WebSocket. Each text frame is one JSON object (a _record_); records are newline-terminated (`\n`) and a frame may carry several. Every connection and upgrade request carries `Authorization: Bearer <token>`; otherwise the bridge answers the upgrade with HTTP `401` and no protocol traffic occurs. The bridge listens on `127.0.0.1` only.
 
 ## Records
 
@@ -17,8 +17,13 @@ Every record has a `type`.
 | app → bridge | `command` | `id` (integer), `name`, `params` (object) |
 | bridge → app | `result`  | `id` (echoed), `result` **or** `error`    |
 | bridge → app | `event`   | `seq` (integer), `name`, `data` (object)  |
+| bridge → app | `error`   | `error` (connection-level, no `id`)       |
 
 `error` is `{ "code": string, "message": string }`.
+
+## Protocol violations
+
+A record that is not valid JSON or not a well-formed `command` → `error` record with `error.code = "malformedRecord"`. A first command other than `hello` → `error.code = "helloRequired"`. After any top-level `error` record (and after `versionMismatch`) the bridge closes the socket with WebSocket code `1008`; connections are never left half-usable.
 
 ## Correlation
 
@@ -39,7 +44,7 @@ Every record has a `type`.
 
 ## Keepalive
 
-Bridge sends WebSocket ping every ~30 s (Cloudflare drops idle sockets at ~100 s).
+After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloudflare drops idle sockets at ~100 s).
 
 ## Commands (skeleton)
 
