@@ -34,6 +34,8 @@ export interface SessionGateway {
   searchFiles(query: string, limit: number): Promise<string[]>;
   /** Identifies the session the gateway currently drives. */
   sessionId(): string;
+  /** The user-given name of the driven session; undefined while it has none. */
+  sessionName(): string | undefined;
   /** Every stored session of the working directory, most recently modified first. */
   sessions(): Promise<SessionSummary[]>;
   /**

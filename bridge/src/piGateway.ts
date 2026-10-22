@@ -31,6 +31,7 @@ export type PiSession = Pick<
   | "messages"
   | "resourceLoader"
   | "sessionId"
+  | "sessionName"
   | "getSessionStats"
 >;
 
@@ -149,6 +150,10 @@ export class PiGateway implements SessionGateway {
 
   sessionId(): string {
     return this.session.sessionId;
+  }
+
+  sessionName(): string | undefined {
+    return this.session.sessionName;
   }
 
   async sessions(): Promise<SessionSummary[]> {

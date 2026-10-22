@@ -12,6 +12,7 @@ import {
   type ProtocolError,
 } from "./protocol.js";
 import type { SessionGateway } from "./gateway.js";
+import { NtfyNotifier, type NtfyConfig } from "./ntfy.js";
 import { CommandError, Session } from "./session.js";
 
 export interface BridgeOptions {
@@ -25,6 +26,8 @@ export interface BridgeOptions {
   replayLimit?: number;
   /** The agent session this bridge exposes. */
   gateway: SessionGateway;
+  /** When set, every settled run is announced on this ntfy topic. */
+  ntfy?: NtfyConfig;
 }
 
 export interface Bridge {
@@ -56,8 +59,13 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
     pingIntervalMs = 30_000,
     gateway,
     replayLimit,
+    ntfy,
   } = options;
-  const session = new Session(gateway, replayLimit);
+  const session = new Session(
+    gateway,
+    replayLimit,
+    ntfy && new NtfyNotifier(ntfy)
+  );
   const expected = Buffer.from(`Bearer ${token}`);
   const isAuthorized = (req: IncomingMessage): boolean => {
     const given = Buffer.from(req.headers.authorization ?? "");
@@ -76,7 +84,7 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) =>
-      serve(ws, pingIntervalMs, session)
+      serve(ws, pingIntervalMs, session, ntfy)
     );
   });
 
@@ -96,7 +104,12 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
 }
 
 /** Drives one authenticated connection: handshake first, then commands. */
-function serve(ws: WebSocket, pingIntervalMs: number, session: Session): void {
+function serve(
+  ws: WebSocket,
+  pingIntervalMs: number,
+  session: Session,
+  ntfy: NtfyConfig | undefined
+): void {
   let pinger: NodeJS.Timeout | undefined;
   let unsubscribe: (() => void) | undefined;
   let handshaken = false;
@@ -259,7 +272,11 @@ function serve(ws: WebSocket, pingIntervalMs: number, session: Session): void {
       return false;
     }
     handshaken = true;
-    send({ type: "result", id, result: { protocolVersion: PROTOCOL_VERSION } });
+    send({
+      type: "result",
+      id,
+      result: { protocolVersion: PROTOCOL_VERSION, ...(ntfy && { ntfy }) },
+    });
     pinger = setInterval(() => ws.ping(), pingIntervalMs);
     // A missing or invalid cursor means "nothing seen": a full snapshot is always safe.
     const lastSeq = Number.isInteger(params.lastSeq)

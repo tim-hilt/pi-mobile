@@ -37,7 +37,7 @@ enum PromptMode: String, Sendable {
 /// ends the attempts.
 ///
 /// Commands (`send`, `abort`, `clearQueue`, `skills`, `searchFiles`, `sessions`, `newSession`,
-/// `switchSession`, `stats`) are async: they return once the bridge has answered
+/// `switchSession`, `stats`, `show`) are async: they return once the bridge has answered
 /// and throw its `ProtocolError`, or `CommandError` if the connection is not usable. Their effects
 /// show up in `transcript` through the events the bridge streams, never through the return value.
 @MainActor @Observable
@@ -45,6 +45,8 @@ final class BridgeClient {
   private(set) var state = ConnectionState.offline
   /// Everything synced from the bridge so far; kept across reconnects to the same bridge.
   private(set) var transcript = Transcript()
+  /// Where the bridge announces settled runs, as of the latest handshake; nil if it does not.
+  private(set) var ntfy: NtfyTopic?
 
   /// Why a command could not be answered.
   enum CommandError: Error, Equatable {
@@ -127,6 +129,19 @@ final class BridgeClient {
   /// Makes the stored session `id` current, with the same refusal and effect as `newSession`.
   func switchSession(id: String) async throws {
     _ = try await command("switchSession", ["id": .string(id)])
+  }
+
+  /// Makes `sessionId` the session on show, once connected (e.g. after launching from a
+  /// notification). Throws `CommandError.notConnected` if the bridge refuses us or stays out of
+  /// reach for 10 s, or the bridge's refusal of the switch (`runActive`).
+  func show(sessionId: String) async throws {
+    let deadline = ContinuousClock.now + .seconds(10)
+    while state != .connected {
+      if case .failed = state { throw CommandError.notConnected }
+      guard ContinuousClock.now < deadline else { throw CommandError.notConnected }
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    if transcript.sessionId != sessionId { try await switchSession(id: sessionId) }
   }
 
   /// Counts and run timing of the current session.
@@ -219,6 +234,7 @@ final class BridgeClient {
           if let next = Self.transition(on: record, helloId: helloId) {
             state = next
             if case .failed = next { return .refused }
+            ntfy = record.result?.ntfy
             wasConnected = true
           }
         }

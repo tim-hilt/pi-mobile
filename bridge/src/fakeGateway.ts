@@ -36,7 +36,10 @@ export class FakeGateway implements SessionGateway {
     cost: 0,
   };
   aborts = 0;
-  private current = "s1";
+  /** What `sessionId()` reports. */
+  current = "s1";
+  /** What `sessionName()` reports. */
+  name: string | undefined;
   private created = 0;
   /** What `queue()` reports; tests set it to the pending messages they want snapshotted. */
   pending: QueuedMessages = { steering: [], followUp: [] };
@@ -75,6 +78,8 @@ export class FakeGateway implements SessionGateway {
   };
 
   sessionId = () => this.current;
+
+  sessionName = () => this.name;
 
   sessions = async () => this.sessionList;
 

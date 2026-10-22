@@ -26,6 +26,8 @@ class FakePiSession implements PiSession {
   aborts = 0;
   /** What pi reports as this session's identity. */
   sessionId = "s1";
+  /** What pi reports as this session's user-given name. */
+  sessionName: string | undefined;
   /** What pi's `getSessionStats()` reports; only the fields the bridge reads. */
   stats = {
     userMessages: 0,
@@ -504,9 +506,10 @@ test("sessions are the stored ones as summaries, with names where given", async 
   ]);
 });
 
-test("the session id and stats are read through to pi", () => {
+test("the session id, name and stats are read through to pi", () => {
   const { pi, gateway } = setup();
   pi.sessionId = "abc";
+  pi.sessionName = "refactor auth";
   pi.stats = {
     userMessages: 2,
     assistantMessages: 3,
@@ -516,6 +519,7 @@ test("the session id and stats are read through to pi", () => {
   };
 
   expect(gateway.sessionId()).toBe("abc");
+  expect(gateway.sessionName()).toBe("refactor auth");
   expect(gateway.stats()).toEqual({
     userMessages: 2,
     assistantMessages: 3,

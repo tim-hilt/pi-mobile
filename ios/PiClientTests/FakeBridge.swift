@@ -5,6 +5,8 @@ import Network
 /// In-process WebSocket server standing in for the bridge. It authenticates the
 /// upgrade like the real bridge (HTTP 401 on a wrong token) and hands every
 /// received text frame to a script that replies with real protocol frames.
+/// With no token it accepts any client, like a public ntfy server, and `onConnect`
+/// lets it speak first.
 ///
 /// Speaks RFC 6455 by hand over TCP: Network.framework's WebSocket server cannot
 /// answer an upgrade with a plain 401.
@@ -41,7 +43,11 @@ final class FakeBridge: @unchecked Sendable {
   private(set) var url: URL
 
   /// Starts on a free localhost port; returns once it is listening.
-  init(token: String, script: @escaping Script) async throws {
+  /// `onConnect` runs for every client that completes the upgrade.
+  init(
+    token: String?, script: @escaping Script,
+    onConnect: (@Sendable (Peer) -> Void)? = nil
+  ) async throws {
     let parameters = NWParameters.tcp
     parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
     listener = try NWListener(using: parameters)
@@ -49,7 +55,7 @@ final class FakeBridge: @unchecked Sendable {
 
     listener.newConnectionHandler = { [queue] connection in
       connection.start(queue: queue)
-      Self.upgrade(connection, token: token, script: script)
+      Self.upgrade(connection, token: token, script: script, onConnect: onConnect)
     }
     let port: NWEndpoint.Port = try await withCheckedThrowingContinuation { continuation in
       listener.stateUpdateHandler = { [listener] state in
@@ -68,7 +74,10 @@ final class FakeBridge: @unchecked Sendable {
 
   // MARK: HTTP upgrade
 
-  private static func upgrade(_ connection: NWConnection, token: String, script: @escaping Script) {
+  private static func upgrade(
+    _ connection: NWConnection, token: String?, script: @escaping Script,
+    onConnect: (@Sendable (Peer) -> Void)?
+  ) {
     connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, _, _ in
       guard let data, let request = String(data: data, encoding: .utf8) else { return connection.cancel() }
       let headers = Dictionary(
@@ -80,7 +89,7 @@ final class FakeBridge: @unchecked Sendable {
           )
         }, uniquingKeysWith: { $1 })
 
-      guard headers["authorization"] == "Bearer \(token)", let key = headers["sec-websocket-key"] else {
+      guard token.map({ headers["authorization"] == "Bearer \($0)" }) ?? true, let key = headers["sec-websocket-key"] else {
         connection.send(
           content: Data("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".utf8),
           completion: .contentProcessed { _ in connection.cancel() })
@@ -92,7 +101,10 @@ final class FakeBridge: @unchecked Sendable {
         content: Data(
           "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: \(accept)\r\n\r\n"
             .utf8),
-        completion: .contentProcessed { _ in receiveFrames(on: connection, script: script) })
+        completion: .contentProcessed { _ in
+          onConnect?(Peer(connection: connection))
+          receiveFrames(on: connection, script: script)
+        })
     }
   }
 

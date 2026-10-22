@@ -14,7 +14,8 @@ afterEach(async () => {
 async function bridge(
   pingIntervalMs?: number,
   gateway = new FakeGateway(),
-  replayLimit?: number
+  replayLimit?: number,
+  ntfy?: { baseUrl: string; topic: string }
 ): Promise<Bridge> {
   const b = await startBridge({
     token: TOKEN,
@@ -22,6 +23,7 @@ async function bridge(
     pingIntervalMs,
     gateway,
     replayLimit,
+    ntfy,
   });
   cleanups.push(() => b.close());
   return b;
@@ -80,6 +82,20 @@ test("valid token and supported version are acked, then pinged", async () => {
     result: { protocolVersion: PROTOCOL_VERSION },
   });
   await pinged;
+});
+
+test("the hello result tells the app where settle notifications are published", async () => {
+  const ntfy = { baseUrl: "https://ntfy.example", topic: "xk3-secret" };
+  const b = await bridge(undefined, new FakeGateway(), undefined, ntfy);
+  const c = await connect(b);
+
+  c.send(hello(1, PROTOCOL_VERSION));
+
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 1,
+    result: { protocolVersion: PROTOCOL_VERSION, ntfy },
+  });
 });
 
 test("no pings are sent before the handshake completes", async () => {

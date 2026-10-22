@@ -14,13 +14,21 @@ import { startBridge } from "./server.js";
  * (discovered resources, stored settings and credentials, as the pi CLI would)
  * and serves it over the Bridge Protocol.
  *
- * Env: `PI_BRIDGE_TOKEN` (required bearer token), `PI_BRIDGE_PORT` (default 8787).
+ * Env: `PI_BRIDGE_TOKEN` (required bearer token), `PI_BRIDGE_PORT` (default 8787),
+ * `PI_BRIDGE_NTFY_TOPIC` (unguessable topic; settled runs are announced only when set),
+ * `PI_BRIDGE_NTFY_URL` (default https://ntfy.sh).
  */
 const token = process.env.PI_BRIDGE_TOKEN;
 if (!token) {
   console.error("PI_BRIDGE_TOKEN is required");
   process.exit(1);
 }
+
+const ntfyTopic = process.env.PI_BRIDGE_NTFY_TOPIC;
+const ntfy = ntfyTopic && {
+  baseUrl: process.env.PI_BRIDGE_NTFY_URL ?? "https://ntfy.sh",
+  topic: ntfyTopic,
+};
 
 const cwd = process.cwd();
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({
@@ -49,6 +57,7 @@ const bridge = await startBridge({
   token,
   port: Number(process.env.PI_BRIDGE_PORT ?? 8787),
   gateway,
+  ntfy: ntfy || undefined,
 });
 console.log(`pi bridge listening on ${bridge.host}:${bridge.port}`);
 

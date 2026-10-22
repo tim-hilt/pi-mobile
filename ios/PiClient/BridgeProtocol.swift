@@ -124,6 +124,8 @@ struct Record: Decodable, Sendable {
   struct CommandResult: Sendable {
     /// `hello`.
     let protocolVersion: Int?
+    /// `hello`: where settled runs are announced; absent when the bridge does not announce them.
+    let ntfy: NtfyTopic?
     /// `clearQueue`: the texts dropped.
     let steering: [String]?
     let followUp: [String]?
@@ -138,10 +140,11 @@ struct Record: Decodable, Sendable {
     let stats: SessionStats?
 
     init(
-      protocolVersion: Int? = nil, steering: [String]? = nil, followUp: [String]? = nil, skills: [Skill]? = nil,
+      protocolVersion: Int? = nil, ntfy: NtfyTopic? = nil, steering: [String]? = nil, followUp: [String]? = nil, skills: [Skill]? = nil,
       files: [String]? = nil, sessions: [SessionSummary]? = nil, currentId: String? = nil, stats: SessionStats? = nil
     ) {
       self.protocolVersion = protocolVersion
+      self.ntfy = ntfy
       self.steering = steering
       self.followUp = followUp
       self.skills = skills
@@ -240,13 +243,14 @@ enum JSONValue: Codable, Equatable, Sendable {
 
 extension Record.CommandResult: Decodable {
   private enum CodingKeys: String, CodingKey {
-    case protocolVersion, steering, followUp, skills, files, sessions, currentId
+    case protocolVersion, ntfy, steering, followUp, skills, files, sessions, currentId
   }
 
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
       protocolVersion: try values.decodeIfPresent(Int.self, forKey: .protocolVersion),
+      ntfy: try values.decodeIfPresent(NtfyTopic.self, forKey: .ntfy),
       steering: try values.decodeIfPresent([String].self, forKey: .steering),
       followUp: try values.decodeIfPresent([String].self, forKey: .followUp),
       skills: try values.decodeIfPresent([Skill].self, forKey: .skills),

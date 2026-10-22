@@ -6,6 +6,7 @@ import type {
   SessionSummary,
   SkillInfo,
 } from "./gateway.js";
+import type { RunNotifier } from "./ntfy.js";
 
 /** A bridge → app event as it goes on the wire, minus the `type` discriminator. */
 export interface BridgeEvent {
@@ -39,7 +40,8 @@ export interface SessionStats extends GatewayStats {
  * The session as the protocol sees it: turns the gateway's events into
  * sequenced `BridgeEvent`s (adding run timing), remembers recent ones so a
  * reconnecting client can catch up, and routes prompts to the gateway
- * according to whether a run is active.
+ * according to whether a run is active. Every settled run is also announced
+ * to `notifier`, whether or not anyone is connected.
  */
 export class Session {
   private seq = 0;
@@ -55,7 +57,8 @@ export class Session {
 
   constructor(
     private gateway: SessionGateway,
-    private replayLimit = 1000
+    private replayLimit = 1000,
+    private notifier?: RunNotifier
   ) {
     this.detach = gateway.subscribe((event) => this.publish(event));
   }
@@ -241,6 +244,13 @@ export class Session {
       this.runs++;
       this.runDurationMs += durationMs;
       Object.assign(data, { durationMs });
+      const sessionName = this.gateway.sessionName();
+      this.notifier?.runSettled({
+        sessionId: this.gateway.sessionId(),
+        ...(sessionName !== undefined && { sessionName }),
+        stopReason: event.stopReason,
+        durationMs,
+      });
     }
     const wire = { seq: ++this.seq, name, data };
     this.log.push(wire);
