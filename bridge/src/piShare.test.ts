@@ -20,6 +20,8 @@ class FakeHost implements PiHost {
   name: string | undefined;
   cwd = "/work";
   commandList: Array<Partial<SlashCommandInfo>> = [];
+  modelId: string | undefined;
+  context: { tokens: number | null; contextWindow: number } | undefined;
 
   send = (text: string, deliverAs?: "steer" | "followUp") => {
     this.sent.push([text, deliverAs]);
@@ -37,6 +39,8 @@ class FakeHost implements PiHost {
   sessionId = () => this.id;
   sessionName = () => this.name;
   commands = () => this.commandList as SlashCommandInfo[];
+  model = () => this.modelId;
+  contextUsage = () => this.context;
 }
 
 function setup() {
@@ -64,6 +68,13 @@ const assistantEnd = (
 ) => ({
   type: "message_end",
   message: { role: "assistant", content, stopReason, errorMessage },
+});
+const usage = (tokens: number, cost: number) => ({
+  input: tokens,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  cost: { total: cost },
 });
 const userEnd = (content: unknown) => ({
   type: "message_end",
@@ -337,6 +348,7 @@ test("the history holds user and assistant text and thinking, and each tool call
     ],
     steering: [],
     followUp: [],
+    cost: 0,
   });
 });
 
@@ -358,13 +370,6 @@ test("skills are pi's skill commands, by name and description", () => {
 
 test("stats count the whole session, across branches", () => {
   const { host, share } = setup();
-  const usage = (tokens: number, cost: number) => ({
-    input: tokens,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    cost: { total: cost },
-  });
   host.messages = [
     { role: "user", content: "hi" },
     {
@@ -423,5 +428,69 @@ test("the first user message of an empty session updates its preview", () => {
   expect(records.filter((r) => r.type === "info")).toEqual([
     { type: "info", info: { id: "s1", cwd: "/work", preview: "fix login" } },
     { type: "info", info: { id: "s1", cwd: "/work", preview: "fix login" } },
+  ]);
+});
+
+test("the history carries the status: model, context use and the session's price", () => {
+  const { host, share } = setup();
+  host.modelId = "opus";
+  host.context = { tokens: 18_800, contextWindow: 1_000_000 };
+  host.messages = [{ role: "assistant", content: [], usage: usage(10, 0.4) }];
+  host.extraEntries = [{ type: "usage", usage: usage(5, 0.02) }];
+
+  expect(share.history()).toMatchObject({
+    model: "opus",
+    contextTokens: 18_800,
+    contextWindow: 1_000_000,
+    cost: expect.closeTo(0.42),
+  });
+});
+
+test("the status leaves out what pi doesn't know", () => {
+  const { host, share } = setup();
+  const { messages, steering, followUp, ...status } = share.history();
+  expect(status).toEqual({ cost: 0 });
+
+  host.modelId = "opus";
+  host.context = { tokens: null, contextWindow: 200_000 };
+  const { messages: _, ...compacted } = share.history();
+  expect(compacted).toMatchObject({ model: "opus", contextWindow: 200_000 });
+  expect(compacted).not.toHaveProperty("contextTokens");
+});
+
+test("the status is sent when a turn, run, model switch, compaction or tree move changed it", () => {
+  const { host, events, emit } = setup();
+  const statuses = () => events().filter((e) => e.name === "status");
+
+  emit({ type: "agent_start" });
+  host.context = { tokens: 100, contextWindow: 1000 };
+  emit({ type: "message_update", assistantMessageEvent: { type: "start" } });
+  expect(statuses()).toEqual([]);
+  emit({ type: "turn_end" });
+  emit({ type: "agent_settled", aborted: false }); // unchanged
+  host.modelId = "opus";
+  emit({ type: "model_select" });
+  host.context = { tokens: null, contextWindow: 1000 };
+  emit({ type: "session_compact" });
+  host.context = { tokens: 50, contextWindow: 1000 };
+  emit({ type: "session_tree" });
+
+  expect(statuses()).toEqual([
+    { name: "status", contextTokens: 100, contextWindow: 1000, cost: 0 },
+    {
+      name: "status",
+      model: "opus",
+      contextTokens: 100,
+      contextWindow: 1000,
+      cost: 0,
+    },
+    { name: "status", model: "opus", contextWindow: 1000, cost: 0 },
+    {
+      name: "status",
+      model: "opus",
+      contextTokens: 50,
+      contextWindow: 1000,
+      cost: 0,
+    },
   ]);
 });

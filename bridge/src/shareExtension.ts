@@ -46,6 +46,10 @@ export default function share(pi: ExtensionAPI) {
   pi.on("tool_execution_start", forward);
   pi.on("tool_execution_update", forward);
   pi.on("tool_execution_end", forward);
+  pi.on("turn_end", forward);
+  pi.on("model_select", forward);
+  pi.on("session_compact", forward);
+  pi.on("session_tree", forward);
 }
 
 function host(pi: ExtensionAPI, ctx: ExtensionContext) {
@@ -63,6 +67,8 @@ function host(pi: ExtensionAPI, ctx: ExtensionContext) {
     sessionName: () => pi.getSessionName(),
     cwd: ctx.cwd,
     commands: () => pi.getCommands(),
+    model: () => ctx.model?.id,
+    contextUsage: () => ctx.getContextUsage(),
   };
 }
 

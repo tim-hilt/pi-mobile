@@ -8,6 +8,7 @@ import type {
   GatewayStats,
   QueuedMessages,
   SessionHistory,
+  SessionStatus,
   SharedSessionInfo,
   SkillInfo,
   TranscriptMessage,
@@ -28,7 +29,24 @@ export interface PiHost {
   sessionName(): string | undefined;
   cwd: string;
   commands(): SlashCommandInfo[];
+  /** Id of the active model, if one is selected. */
+  model(): string | undefined;
+  /** `ctx.getContextUsage()`: undefined without a model; `tokens` is null while unknown. */
+  contextUsage(): { tokens: number | null; contextWindow: number } | undefined;
 }
+
+/**
+ * The pi events after which the status may have changed. Usage is read from
+ * the session, which records an assistant message only after its
+ * `message_end`, so `turn_end` is the first point its tokens and price show.
+ */
+const STATUS_CHANGES = new Set([
+  "turn_end",
+  "agent_settled",
+  "model_select",
+  "session_compact",
+  "session_tree",
+]);
 
 /** The pi session events `PiShare` translates; the shapes of pi's extension events. */
 export interface PiEvent {
@@ -40,7 +58,7 @@ export interface PiEvent {
  * One pi session as shared over the Share Link: translates pi's extension
  * events into gateway events, answers the bridge's calls, and owns the run
  * lifecycle — a run begins at pi's `agent_start` and ends when pi reports it
- * settled. Pi doesn't expose its queue to extensions, so the queue holds only
+ * settled — and the status (model, context fill, price), sent when it changes. Pi doesn't expose its queue to extensions, so the queue holds only
  * what arrived over the link.
  */
 export class PiShare {
@@ -51,11 +69,16 @@ export class PiShare {
   private queued: QueuedMessages = { steering: [], followUp: [] };
   /** The first user message; looked up once, then set by the first that arrives. */
   private preview: string | undefined;
+  /** The status as the bridge last got it (JSON), to send only changes. */
+  private reportedStatus: string;
 
   constructor(
     private host: PiHost,
     private sink: (record: ShareRecord) => void
-  ) {}
+  ) {
+    // A bridge learns the status from its first history; only later changes are news.
+    this.reportedStatus = JSON.stringify(this.status());
+  }
 
   /** Records that introduce the session to a bridge: who it is and, mid-run, that a run is on. */
   introduction(): ShareRecord[] {
@@ -181,6 +204,7 @@ export class PiShare {
           this.setQueue({ steering: [], followUp: [] });
         break;
     }
+    if (STATUS_CHANGES.has(event.type)) this.reportStatus();
   }
 
   /** The current branch as the app shows it: each tool call after the turn that made it. */
@@ -219,11 +243,36 @@ export class PiShare {
           });
       }
     }
+    const status = this.status();
+    this.reportedStatus = JSON.stringify(status);
     return {
       messages,
       steering: [...this.queued.steering],
       followUp: [...this.queued.followUp],
+      ...status,
     };
+  }
+
+  private status(): SessionStatus {
+    const model = this.host.model();
+    const context = this.host.contextUsage();
+    return {
+      ...(model !== undefined && { model }),
+      ...(typeof context?.tokens === "number" && {
+        contextTokens: context.tokens,
+      }),
+      ...(context && { contextWindow: context.contextWindow }),
+      cost: this.stats().cost,
+    };
+  }
+
+  /** Sends the status if it changed since the bridge last got it. */
+  private reportStatus(): void {
+    const status = this.status();
+    const json = JSON.stringify(status);
+    if (json === this.reportedStatus) return;
+    this.reportedStatus = json;
+    this.emit({ name: "status", ...status });
   }
 
   private skills(): SkillInfo[] {

@@ -61,6 +61,33 @@ struct Transcript: Equatable, Sendable {
     var isEmpty: Bool { steering.isEmpty && followUp.isEmpty }
   }
 
+  /// What a status bar shows about the session, as pi's footer does.
+  struct Status: Equatable, Sendable {
+    /// Id of the active model; nil when none is selected.
+    var model: String?
+    /// Tokens the context holds; nil while unknown (e.g. right after compaction) or without a model.
+    var contextTokens: Int?
+    /// Size of the active model's context window; nil without a model.
+    var contextWindow: Int?
+    /// Price of the whole session so far, in USD.
+    var cost = 0.0
+
+    /// Context fill against the window, e.g. `18.8k/1.0M` (`?` while unknown); nil without a model.
+    var contextUsage: String? {
+      guard let contextWindow else { return nil }
+      return "\(contextTokens.map(Self.tokens) ?? "?")/\(Self.tokens(contextWindow))"
+    }
+
+    /// Token count with one decimal, as the user's pi footer writes it: `999`, `18.8k`, `1.0M`.
+    private static func tokens(_ count: Int) -> String {
+      switch count {
+      case ..<1_000: "\(count)"
+      case ..<1_000_000: String(format: "%.1fk", Double(count) / 1_000)
+      default: String(format: "%.1fM", Double(count) / 1_000_000)
+      }
+    }
+  }
+
   enum Entry: Equatable, Identifiable, Sendable {
     case message(Message)
     case toolCall(ToolCall)
@@ -81,6 +108,8 @@ struct Transcript: Equatable, Sendable {
   private(set) var runStartedAt: Date?
   /// What is waiting to be delivered to the agent.
   private(set) var queue = Queue()
+  /// Model, context and price of the session shown.
+  private(set) var status = Status()
   /// The session shown, as of the latest snapshot; nil before the first.
   private(set) var sessionId: String?
   /// The working directory of the session shown.
@@ -118,9 +147,11 @@ struct Transcript: Equatable, Sendable {
       hasEnded = false
       replaceAll(with: data?.messages ?? [], runningFor: data?.running == true ? data?.elapsedMs ?? 0 : nil, now: now)
       queue = Queue(data)
+      status = Status(data)
     case "runStarted": runStartedAt = now
     case "userMessage": entries.append(.message(makeMessage(.user, text: data?.text ?? "", thinking: "")))
     case "queue": queue = Queue(data)
+    case "status": status = Status(data)
     case "delta": appendDelta(kind: data?.kind, text: data?.text ?? "")
     case "messageEnd": finishMessage(text: data?.text ?? "", thinking: data?.thinking ?? "")
     case "toolCall": if let data { applyToolCall(data) }
@@ -251,5 +282,14 @@ extension Transcript.Queue {
   /// The queue a `queue` event or `transcript` snapshot describes; absent lists are empty.
   fileprivate init(_ data: Record.EventData?) {
     self.init(steering: data?.steering ?? [], followUp: data?.followUp ?? [])
+  }
+}
+
+extension Transcript.Status {
+  /// The status a `status` event or `transcript` snapshot describes.
+  fileprivate init(_ data: Record.EventData?) {
+    self.init(
+      model: data?.model, contextTokens: data?.contextTokens, contextWindow: data?.contextWindow,
+      cost: data?.cost ?? 0)
   }
 }

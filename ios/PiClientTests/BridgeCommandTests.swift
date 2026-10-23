@@ -134,6 +134,32 @@ private func event(_ seq: Int, _ name: String, _ data: String) -> String {
     #expect(fresh.transcript.queue == Transcript.Queue(steering: [], followUp: ["later"]))
   }
 
+  @Test func theStatusFollowsStatusEventsAndSnapshots() async throws {
+    let (client, bridge, _) = try await connected(
+      onConnect: event(
+        1, "transcript",
+        #"{"running":false,"messages":[],"model":"opus","contextTokens":18800,"contextWindow":1000000,"cost":0.5}"#))
+    defer { bridge.stop() }
+    for _ in 0..<500 where client.transcript.lastSeq < 1 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(
+      client.transcript.status
+        == Transcript.Status(model: "opus", contextTokens: 18_800, contextWindow: 1_000_000, cost: 0.5))
+
+    let (fresh, freshBridge, _) = try await connected(
+      onConnect: event(2, "status", #"{"model":"opus","contextWindow":1000000,"cost":0.75}"#))
+    defer { freshBridge.stop() }
+    for _ in 0..<500 where fresh.transcript.lastSeq < 2 { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(fresh.transcript.status == Transcript.Status(model: "opus", contextWindow: 1_000_000, cost: 0.75))
+  }
+
+  @Test func contextUsageIsCompact() {
+    #expect(Transcript.Status(contextTokens: 18_800, contextWindow: 1_000_000).contextUsage == "18.8k/1.0M")
+    #expect(Transcript.Status(contextTokens: 999, contextWindow: 200_000).contextUsage == "999/200.0k")
+    #expect(Transcript.Status(contextTokens: 12_000_000, contextWindow: 10_000_000).contextUsage == "12.0M/10.0M")
+    #expect(Transcript.Status(contextWindow: 200_000).contextUsage == "?/200.0k")
+    #expect(Transcript.Status().contextUsage == nil)
+  }
+
   @Test func aDeliveredMessageLeavesTheQueue() async throws {
     let (client, bridge, _) = try await connected(
       onConnect: event(1, "queue", #"{"steering":["left"],"followUp":[]}"#)

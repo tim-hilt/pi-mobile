@@ -184,8 +184,11 @@ export class Session {
     this.gateway.history(deliver);
   }
 
-  private snapshot(history: SessionHistory): BridgeEvent {
-    const messages: Record<string, unknown>[] = [...history.messages];
+  private snapshot({
+    messages: completed,
+    ...queueAndStatus
+  }: SessionHistory): BridgeEvent {
+    const messages: Record<string, unknown>[] = [...completed];
     if (this.streaming)
       messages.push({ role: "assistant", ...this.streaming, streaming: true });
     const startedAt = this.runStartedAt;
@@ -199,8 +202,7 @@ export class Session {
         cwd,
         messages,
         running,
-        steering: history.steering,
-        followUp: history.followUp,
+        ...queueAndStatus,
         // The app has no other way to learn when a run it joined midway began.
         ...(running && {
           elapsedMs: Math.round(performance.now() - startedAt),

@@ -482,6 +482,7 @@ test("a fresh connect gets a transcript snapshot at the current seq", async () =
       running: false,
       steering: [],
       followUp: [],
+      cost: 0,
     })
   );
 });
@@ -508,6 +509,7 @@ test("a snapshot taken mid-run includes the message still streaming", async () =
       elapsedMs: expect.any(Number),
       steering: [],
       followUp: [],
+      cost: 0,
     })
   );
 
@@ -558,6 +560,7 @@ test("a snapshot never repeats a message that already ended", async () => {
       elapsedMs: expect.any(Number),
       steering: [],
       followUp: [],
+      cost: 0,
     })
   );
 });
@@ -667,6 +670,38 @@ test("a snapshot lists the messages still queued", async () => {
   expect(await c.next()).toMatchObject({
     name: "transcript",
     data: { steering: ["left"], followUp: ["later"] },
+  });
+});
+
+test("status changes stream as events", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+
+  gateway.emit({ name: "status", model: "opus", cost: 0.5 });
+
+  expect(await c.next()).toEqual(
+    wire(1, "status", { model: "opus", cost: 0.5 })
+  );
+});
+
+test("a snapshot carries the status", async () => {
+  const gateway = new FakeGateway();
+  gateway.status = {
+    model: "opus",
+    contextTokens: 18_800,
+    contextWindow: 1_000_000,
+    cost: 0.5,
+  };
+  const c = await resume(await bridge(undefined, gateway), 0);
+
+  expect(await c.next()).toMatchObject({
+    name: "transcript",
+    data: {
+      model: "opus",
+      contextTokens: 18_800,
+      contextWindow: 1_000_000,
+      cost: 0.5,
+    },
   });
 });
 
@@ -958,6 +993,7 @@ test("when pi replaces its session, joined clients get the new one's snapshot an
       running: false,
       steering: [],
       followUp: [],
+      cost: 0,
     })
   );
   // The share now goes by the new id; a cursor from before the switch gets a snapshot.

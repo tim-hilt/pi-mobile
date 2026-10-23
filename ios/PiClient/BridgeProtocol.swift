@@ -169,6 +169,12 @@ struct Record: Decodable, Sendable {
     /// `queue` event and `transcript` snapshot: the messages waiting to be delivered.
     let steering: [String]?
     let followUp: [String]?
+    /// `status` event and `transcript` snapshot: the active model, how full its context is, and
+    /// the session's price (USD).
+    let model: String?
+    let contextTokens: Int?
+    let contextWindow: Int?
+    let cost: Double?
     /// `transcript` snapshot.
     let messages: [WireMessage]?
     /// `transcript` snapshot and `sessionEnded`: the session concerned.

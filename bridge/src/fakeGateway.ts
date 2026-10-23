@@ -4,6 +4,7 @@ import type {
   QueuedMessages,
   SessionGateway,
   SessionHistory,
+  SessionStatus,
   SharedSessionInfo,
   SkillInfo,
   TranscriptMessage,
@@ -33,6 +34,8 @@ export class FakeGateway implements SessionGateway {
   aborts = 0;
   /** What `info()` reports. */
   current: SharedSessionInfo;
+  /** What `history()` reports as the status. */
+  status: SessionStatus = { cost: 0 };
   /** What `history()` reports as queued. */
   pending: QueuedMessages = { steering: [], followUp: [] };
   /** When set, the next call to `prompt`, `steer`, `followUp`, `abort` or `searchFiles` rejects with it. */
@@ -54,7 +57,7 @@ export class FakeGateway implements SessionGateway {
   };
 
   history = (onHistory: (history: SessionHistory | undefined) => void) =>
-    onHistory({ messages: this.messages, ...this.pending });
+    onHistory({ messages: this.messages, ...this.pending, ...this.status });
 
   skills = async () => this.skillList;
 

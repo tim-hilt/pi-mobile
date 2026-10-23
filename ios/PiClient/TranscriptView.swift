@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The synced conversation, newest at the bottom, with the composer below it.
+/// The synced conversation, newest at the bottom, with the composer and the session's status below it.
 struct TranscriptView: View {
   let client: BridgeClient
 
@@ -11,6 +11,9 @@ struct TranscriptView: View {
       VStack(spacing: 0) {
         conversation
         ComposerView(client: client)
+        if client.transcript.sessionId != nil {
+          StatusBar(cwd: client.transcript.cwd, status: client.transcript.status)
+        }
       }
       .navigationTitle(client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Transcript")
       .navigationBarTitleDisplayMode(.inline)
@@ -110,6 +113,38 @@ private struct ToolCallView: View {
     }
     .padding(10)
     .background(.quaternary, in: .rect(cornerRadius: 10))
+  }
+}
+
+/// One line like pi's footer: directory on the left; model, context fill and price on the right.
+private struct StatusBar: View {
+  let cwd: String?
+  let status: Transcript.Status
+
+  var body: some View {
+    HStack(spacing: 8) {
+      if let cwd { Text(Self.abbreviatingHome(cwd)).truncationMode(.head) }
+      Spacer(minLength: 0)
+      Text(details).layoutPriority(1)
+    }
+    .font(.caption.monospacedDigit())
+    .foregroundStyle(.secondary)
+    .lineLimit(1)
+    .padding(.horizontal)
+    .padding(.bottom, 4)
+    .background(.bar)
+  }
+
+  private var details: String {
+    [status.model, status.contextUsage, status.cost.formatted(.currency(code: "USD"))]
+      .compactMap { $0 }
+      .joined(separator: " · ")
+  }
+
+  /// `~` for the Mac user's home, as pi shows it. The app can't ask the Mac where home is, so it
+  /// assumes macOS's (and Linux's) layout.
+  private static func abbreviatingHome(_ path: String) -> String {
+    path.replacing(/^\/(Users|home)\/[^\/]+/, with: "~")
   }
 }
 

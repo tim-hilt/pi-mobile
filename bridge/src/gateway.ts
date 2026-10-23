@@ -51,8 +51,20 @@ export interface SharedSessionInfo {
 }
 
 /** The authoritative state behind a snapshot. */
-export interface SessionHistory extends QueuedMessages {
+export interface SessionHistory extends QueuedMessages, SessionStatus {
   messages: TranscriptMessage[];
+}
+
+/** What a status bar shows about the session, as pi's footer does. */
+export interface SessionStatus {
+  /** Id of the active model; absent when none is selected. */
+  model?: string;
+  /** Tokens the model's context holds; absent when unknown (no model, or compacted since its last answer). */
+  contextTokens?: number;
+  /** Size of the active model's context window; absent when no model is selected. */
+  contextWindow?: number;
+  /** Price of the whole session so far, in USD. */
+  cost: number;
 }
 
 /** A skill the user can invoke by name. */
@@ -105,6 +117,8 @@ export type GatewayEvent =
   | { name: "userMessage"; text: string }
   /** The pending queue changed; carries its full new contents. */
   | ({ name: "queue" } & QueuedMessages)
+  /** The status changed; carries all of it. */
+  | ({ name: "status" } & SessionStatus)
   | { name: "delta"; kind: "text" | "thinking"; text: string }
   /** The authoritative completed assistant message; supersedes the deltas that built it. */
   | { name: "messageEnd"; text: string; thinking: string }

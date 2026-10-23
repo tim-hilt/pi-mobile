@@ -43,6 +43,8 @@ function pi(id: string, cwd = "/work") {
     sessionName: () => undefined,
     cwd,
     commands: () => [],
+    model: () => undefined,
+    contextUsage: () => undefined,
   };
   return { host, sent };
 }
