@@ -25,6 +25,7 @@
 		9DDE9AF16BBC858CCADC758A /* BridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C52994EACF78C7101A20C7 /* BridgeProtocol.swift */; };
 		C33C9D10A53D1B5D1580F83A /* ConnectionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7797D453BCDAFB9100E78D /* ConnectionStoreTests.swift */; };
 		CD2A83C65FE1A962EEC36CF5 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = B85E68D53450A36745BE8651 /* Notifications.swift */; };
+		E337B2661ADD489288FE28E1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BD921047ECEB9467F7EA7D85 /* Assets.xcassets */; };
 		E918904CD4251598A79549B8 /* BridgeCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF01800983A9B7F9DE9EA526 /* BridgeCommandTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -52,6 +53,7 @@
 		B1FA77CD75D691E644841093 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
 		B6821A3F3F700605BE20AD43 /* TranscriptSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptSyncTests.swift; sourceTree = "<group>"; };
 		B85E68D53450A36745BE8651 /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
+		BD921047ECEB9467F7EA7D85 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBridge.swift; sourceTree = "<group>"; };
 		ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionsTests.swift; sourceTree = "<group>"; };
 		F1033CE21B96DC349C1B6D25 /* PiClientTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PiClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -84,6 +86,7 @@
 		E36C6F86036996BB761A349B /* PiClient */ = {
 			isa = PBXGroup;
 			children = (
+				BD921047ECEB9467F7EA7D85 /* Assets.xcassets */,
 				F6EDE49D5046EE2366A0FF40 /* BridgeClient.swift */,
 				F5C52994EACF78C7101A20C7 /* BridgeProtocol.swift */,
 				3EE652E751C8D2E4F10FDD50 /* ComposerView.swift */,
@@ -140,6 +143,7 @@
 			buildConfigurationList = BAAAC51F27D692E9822C4667 /* Build configuration list for PBXNativeTarget "PiClient" */;
 			buildPhases = (
 				E732C6D646BF2EE9C73D231F /* Sources */,
+				86B9571124EE6AF8988EDFD6 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -182,6 +186,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		86B9571124EE6AF8988EDFD6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E337B2661ADD489288FE28E1 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A7169BD4F6553DD2ACF4FB6F /* Sources */ = {

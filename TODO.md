@@ -3,4 +3,4 @@
 - [x] Show active model, directory, context window ("18.8k/1.0M") and session price in status bar
 - [ ] Let the user choose the active model on the phone
 - [ ] Render agent answers as markdown on the phone
-- [ ] Use assets/pi_app_icon_1024.png as app icon
+- [x] Use assets/pi_app_icon_1024.png as app icon
