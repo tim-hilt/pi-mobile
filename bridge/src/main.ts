@@ -10,9 +10,9 @@ import { PiGateway } from "./piGateway.js";
 import { startBridge } from "./server.js";
 
 /**
- * Bridge executable. Runs one real pi session in the current directory
- * (discovered resources, stored settings and credentials, as the pi CLI would)
- * and serves it over the Bridge Protocol.
+ * Bridge executable. Runs one real pi session in the directory it was started
+ * from (discovered resources, stored settings and credentials, as the pi CLI
+ * would) and serves it over the Bridge Protocol.
  *
  * Env: `PI_BRIDGE_TOKEN` (required bearer token), `PI_BRIDGE_PORT` (default 8787),
  * `PI_BRIDGE_NTFY_TOPIC` (unguessable topic; settled runs are announced only when set),
@@ -30,7 +30,8 @@ const ntfy = ntfyTopic && {
   topic: ntfyTopic,
 };
 
-const cwd = process.cwd();
+// `npm start -w bridge` runs us inside bridge/; INIT_CWD is where npm was invoked.
+const cwd = process.env.INIT_CWD ?? process.cwd();
 const createRuntime: CreateAgentSessionRuntimeFactory = async ({
   cwd,
   sessionManager,

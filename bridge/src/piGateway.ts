@@ -80,22 +80,20 @@ export class PiGateway implements SessionGateway {
   /**
    * Resolves once pi accepts the prompt, not when the run ends: pi's own
    * `prompt()` only resolves at the end of the run. Rejects if pi refuses it.
+   * A prompt pi consumes without a run (an extension command) starts none.
    */
   prompt(text: string): Promise<void> {
+    // Only the first settle counts: a failure after acceptance belongs to the run.
     return new Promise((accepted, refused) => {
-      let isAccepted = false;
       this.session
         .prompt(text, {
           source: "rpc",
-          preflightResult: () => {
-            isAccepted = true;
-            this.beginRun();
+          preflightResult: (disposition) => {
+            if (disposition === "started") this.beginRun();
             accepted();
           },
         })
-        .catch((e) => {
-          if (!isAccepted) refused(e);
-        });
+        .then(() => accepted(), refused);
     });
   }
 
@@ -124,15 +122,35 @@ export class PiGateway implements SessionGateway {
 
   transcript(): TranscriptMessage[] {
     const history: TranscriptMessage[] = [];
+    /** Tool calls by id, to complete with their result message. */
+    const calls = new Map<string, TranscriptMessage & { role: "toolCall" }>();
     for (const message of this.session.messages) {
       if (message.role === "user") {
         history.push({ role: "user", text: userText(message.content) });
       } else if (message.role === "assistant") {
         const text = joinBlocks(message.content, "text");
         const thinking = joinBlocks(message.content, "thinking");
-        // A turn that only called tools has nothing to show.
+        // A turn that only called tools shows just its calls.
         if (text || thinking)
           history.push({ role: "assistant", text, thinking });
+        for (const block of message.content) {
+          if (block.type !== "toolCall") continue;
+          const call = {
+            role: "toolCall" as const,
+            toolCallId: block.id,
+            toolName: block.name,
+            args: block.arguments,
+          };
+          calls.set(block.id, call);
+          history.push(call);
+        }
+      } else if (message.role === "toolResult") {
+        const call = calls.get(message.toolCallId);
+        if (call)
+          Object.assign(call, {
+            output: toolOutput(message),
+            isError: message.isError,
+          });
       }
     }
     return history;

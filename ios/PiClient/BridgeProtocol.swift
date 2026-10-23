@@ -5,9 +5,12 @@ enum BridgeProtocol {
   /// Version negotiated on connect.
   static let version = 1
 
-  /// Newline-terminated `hello` command: the mandatory first record of a connection.
-  static func helloFrame(id: Int, lastSeq: Int) -> String {
-    commandFrame(id: id, name: "hello", params: ["protocolVersion": .number(Double(version)), "lastSeq": .number(Double(lastSeq))])
+  /// Newline-terminated `hello` command: the mandatory first record of a connection. `lastSeq`
+  /// and its `epoch` are the replay cursor; nil `epoch` (never connected) omits it.
+  static func helloFrame(id: Int, lastSeq: Int, epoch: String?) -> String {
+    var params: [String: JSONValue] = ["protocolVersion": .number(Double(version)), "lastSeq": .number(Double(lastSeq))]
+    if let epoch { params["epoch"] = .string(epoch) }
+    return commandFrame(id: id, name: "hello", params: params)
   }
 
   /// Newline-terminated `command` record.
@@ -124,6 +127,8 @@ struct Record: Decodable, Sendable {
   struct CommandResult: Sendable {
     /// `hello`.
     let protocolVersion: Int?
+    /// `hello`: the bridge run that event `seq`s count in.
+    let epoch: String?
     /// `hello`: where settled runs are announced; absent when the bridge does not announce them.
     let ntfy: NtfyTopic?
     /// `clearQueue`: the texts dropped.
@@ -140,10 +145,11 @@ struct Record: Decodable, Sendable {
     let stats: SessionStats?
 
     init(
-      protocolVersion: Int? = nil, ntfy: NtfyTopic? = nil, steering: [String]? = nil, followUp: [String]? = nil, skills: [Skill]? = nil,
+      protocolVersion: Int? = nil, epoch: String? = nil, ntfy: NtfyTopic? = nil, steering: [String]? = nil, followUp: [String]? = nil, skills: [Skill]? = nil,
       files: [String]? = nil, sessions: [SessionSummary]? = nil, currentId: String? = nil, stats: SessionStats? = nil
     ) {
       self.protocolVersion = protocolVersion
+      self.epoch = epoch
       self.ntfy = ntfy
       self.steering = steering
       self.followUp = followUp
@@ -185,11 +191,19 @@ struct Record: Decodable, Sendable {
     let stopReason: String?
     let errorMessage: String?
 
+    /// A `transcript` snapshot entry: a message, or a tool call (`role` `toolCall`).
     struct WireMessage: Decodable, Sendable {
+      /// `user`, `assistant` or `toolCall`.
       let role: String
-      let text: String
+      let text: String?
       let thinking: String?
       let streaming: Bool?
+      /// `toolCall` entries, as in the `toolCall` event; `isError` is absent until it finished.
+      let toolCallId: String?
+      let toolName: String?
+      let args: JSONValue?
+      let output: String?
+      let isError: Bool?
     }
   }
 }
@@ -243,13 +257,14 @@ enum JSONValue: Codable, Equatable, Sendable {
 
 extension Record.CommandResult: Decodable {
   private enum CodingKeys: String, CodingKey {
-    case protocolVersion, ntfy, steering, followUp, skills, files, sessions, currentId
+    case protocolVersion, epoch, ntfy, steering, followUp, skills, files, sessions, currentId
   }
 
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
       protocolVersion: try values.decodeIfPresent(Int.self, forKey: .protocolVersion),
+      epoch: try values.decodeIfPresent(String.self, forKey: .epoch),
       ntfy: try values.decodeIfPresent(NtfyTopic.self, forKey: .ntfy),
       steering: try values.decodeIfPresent([String].self, forKey: .steering),
       followUp: try values.decodeIfPresent([String].self, forKey: .followUp),

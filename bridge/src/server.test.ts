@@ -61,12 +61,17 @@ async function connect(b: Bridge, token: string | null = TOKEN) {
   };
 }
 
-const hello = (id: number, protocolVersion: number, lastSeq = 0) =>
+const hello = (
+  id: number,
+  protocolVersion: number,
+  lastSeq = 0,
+  epoch?: string
+) =>
   JSON.stringify({
     type: "command",
     id,
     name: "hello",
-    params: { protocolVersion, lastSeq },
+    params: { protocolVersion, lastSeq, epoch },
   }) + "\n";
 
 test("valid token and supported version are acked, then pinged", async () => {
@@ -79,7 +84,7 @@ test("valid token and supported version are acked, then pinged", async () => {
   expect(await c.next()).toEqual({
     type: "result",
     id: 1,
-    result: { protocolVersion: PROTOCOL_VERSION },
+    result: { protocolVersion: PROTOCOL_VERSION, epoch: expect.any(String) },
   });
   await pinged;
 });
@@ -94,7 +99,11 @@ test("the hello result tells the app where settle notifications are published", 
   expect(await c.next()).toEqual({
     type: "result",
     id: 1,
-    result: { protocolVersion: PROTOCOL_VERSION, ntfy },
+    result: {
+      protocolVersion: PROTOCOL_VERSION,
+      epoch: expect.any(String),
+      ntfy,
+    },
   });
 });
 
@@ -211,10 +220,23 @@ async function ready(b: Bridge) {
   return c;
 }
 
-/** Connects with a replay cursor; consumes the hello result only. */
-async function resume(b: Bridge, lastSeq: number) {
+/** The epoch the bridge's cursors belong to, as a handshake reports it. */
+async function epochOf(b: Bridge): Promise<string> {
   const c = await connect(b);
-  c.send(hello(1, PROTOCOL_VERSION, lastSeq));
+  c.send(hello(1, PROTOCOL_VERSION));
+  const { result } = (await c.next()) as { result: { epoch: string } };
+  c.ws.close();
+  return result.epoch;
+}
+
+/**
+ * Connects with a replay cursor of this bridge run (or of `epoch`); consumes
+ * the hello result only.
+ */
+async function resume(b: Bridge, lastSeq: number, epoch?: string) {
+  epoch ??= await epochOf(b);
+  const c = await connect(b);
+  c.send(hello(1, PROTOCOL_VERSION, lastSeq, epoch));
   await c.next();
   return c;
 }
@@ -575,12 +597,20 @@ test("a cursor older than the replay window gets a snapshot instead", async () =
   expect(await stale.next()).toMatchObject({ seq: 5, name: "transcript" });
 });
 
-test("a cursor ahead of the bridge (bridge restarted) gets a snapshot", async () => {
-  const b = await bridge();
+test("a cursor from another bridge run (restarted) gets a snapshot, even if its seq exists here", async () => {
+  const gateway = new FakeGateway();
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
 
-  const c = await resume(b, 40);
+  const restarted = await resume(b, 1, "previous-run");
+  expect(await restarted.next()).toMatchObject({
+    seq: 2,
+    name: "transcript",
+  });
 
-  expect(await c.next()).toMatchObject({ seq: 0, name: "transcript" });
+  const ahead = await resume(b, 40);
+  expect(await ahead.next()).toMatchObject({ seq: 2, name: "transcript" });
 });
 
 test("abort stops the active run via the gateway", async () => {

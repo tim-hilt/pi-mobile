@@ -224,7 +224,7 @@ final class BridgeClient {
     var wasConnected = false
     do {
       try await socket.send(
-        .string(BridgeProtocol.helloFrame(id: helloId, lastSeq: transcript.lastSeq)))
+        .string(BridgeProtocol.helloFrame(id: helloId, lastSeq: transcript.lastSeq, epoch: transcript.epoch)))
       while true {
         guard case .string(let frame) = try await socket.receive() else { continue }
         for record in try BridgeProtocol.records(in: frame) {

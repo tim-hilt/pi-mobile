@@ -21,8 +21,9 @@ export interface SessionGateway {
   /** Drops every queued message and returns what was dropped. */
   clearQueue(): QueuedMessages;
   /**
-   * The session's completed messages, oldest first: the authoritative history
-   * behind a catch-up snapshot. Excludes a message still being generated.
+   * The session's completed messages and tool calls, oldest first: the
+   * authoritative history behind a catch-up snapshot. Excludes a message still
+   * being generated.
    */
   transcript(): TranscriptMessage[];
   /** The skills the session can invoke as `/skill:<name>`. */
@@ -88,10 +89,22 @@ export interface QueuedMessages {
   followUp: string[];
 }
 
-/** A completed conversation message as the app shows it. */
+/**
+ * A completed conversation message as the app shows it, or a tool call, which
+ * follows the assistant message that made it.
+ */
 export type TranscriptMessage =
   | { role: "user"; text: string }
-  | { role: "assistant"; text: string; thinking: string };
+  | { role: "assistant"; text: string; thinking: string }
+  | {
+      role: "toolCall";
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+      /** `output` (text only) and `isError` are absent while the tool has not finished. */
+      output?: string;
+      isError?: boolean;
+    };
 
 /** How a run ended. `success` is a normal finish; `length` means the model hit its output limit mid-answer. */
 export type StopReason = "success" | "error" | "aborted" | "length";

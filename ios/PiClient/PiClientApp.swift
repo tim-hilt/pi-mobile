@@ -23,8 +23,11 @@ struct PiClientApp: App {
           .tabItem { Label("Connection", systemImage: "network") }
           .tag(Tab.connection)
       }
-      .task {
-        if let saved = store.load(), client.state == .offline { client.connect(to: saved) }
+      // Connect on demand: only while the app is in use; iOS would kill a background socket anyway.
+      // Reconnecting to the same bridge resumes from the transcript's cursor.
+      .task(id: scenePhase == .background) {
+        if scenePhase == .background { return client.disconnect() }
+        if let saved = store.load() { client.connect(to: saved) }
       }
       .task(id: notificationTopic) {
         if let topic = notificationTopic { await notifications.listen(to: topic) }

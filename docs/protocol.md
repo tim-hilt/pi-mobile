@@ -32,16 +32,16 @@ A record that is not valid JSON or not a well-formed `command` → `error` recor
 
 ## Event ordering and replay
 
-- `seq` increases by 1 per event, across the bridge's lifetime.
-- On connect the app sends its last-seen `seq` (`lastSeq`, `0` if none; a missing or invalid value counts as `0`). Right after the `hello` result the bridge sends the catch-up, then streams live without gaps:
+- `seq` increases by 1 per event, across the bridge's lifetime. It restarts with the bridge process, so it is only meaningful together with the `epoch` (opaque string) of the `hello` result that preceded it.
+- On connect the app sends its last-seen `seq` (`lastSeq`, `0` if none) and the `epoch` it came from. A missing or invalid `lastSeq`, or an `epoch` other than the bridge's current one, counts as `0`. Right after the `hello` result the bridge sends the catch-up, then streams live without gaps:
   - `lastSeq` ≥ 1 and the bridge still retains every event after it (last 1000 by default) → exactly the events with `seq > lastSeq`.
-  - Otherwise — fresh client (`0`), cursor too old, or cursor ahead of the bridge's `seq` (bridge restarted) → one `transcript` snapshot instead.
+  - Otherwise — fresh client or restarted bridge (`0`), or cursor too old → one `transcript` snapshot instead.
 - The app adopts a `transcript` event as authoritative: it replaces everything it held and its `seq` becomes the new cursor. A catch-up snapshot does not consume a `seq`; it carries the `seq` of the latest event it reflects. A session switch (see `newSession`) sends a live `transcript` that does take a fresh `seq` and empties the replay log, so a cursor from before the switch always gets a snapshot.
 
 ## Versioning
 
-- First record after connect: app sends `hello` (`command`, `params: { protocolVersion, lastSeq }`).
-- Bridge answers `result` with `{ protocolVersion, ntfy? }` on success (`ntfy` as in [Notifications](#notifications)), or `error.code = "versionMismatch"` and closes the socket.
+- First record after connect: app sends `hello` (`command`, `params: { protocolVersion, lastSeq, epoch? }`).
+- Bridge answers `result` with `{ protocolVersion, epoch, ntfy? }` on success (`ntfy` as in [Notifications](#notifications)), or `error.code = "versionMismatch"` and closes the socket.
 - Breaking changes bump the integer version; additive fields do not.
 
 ## Notifications
@@ -113,7 +113,7 @@ Run events, in the order a run emits them:
 
 ### `transcript`
 
-`{ sessionId, messages, running, steering, followUp }` — `sessionId` is the session shown; the whole conversation, oldest first. `messages` entries are `{ role: "user", text }` or `{ role: "assistant", text, thinking }` (completed messages; tool-only turns omitted). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event. Tool calls and past runs' outcomes are not part of a snapshot.
+`{ sessionId, messages, running, steering, followUp }` — `sessionId` is the session shown; the whole conversation, oldest first. `messages` entries are `{ role: "user", text }`, `{ role: "assistant", text, thinking }` (completed messages; a turn with neither is omitted) or `{ role: "toolCall", toolCallId, toolName, args, output?, isError? }` after the assistant turn that made the call (`output`/`isError` as in `toolCall` `end`, absent until the tool finished; later `toolCall` events with that `toolCallId` update it). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event. Past runs' outcomes and tool durations are not part of a snapshot.
 
 ### `toolCall`
 

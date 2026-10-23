@@ -25,10 +25,11 @@ cd ios && xcodegen generate   # after editing project.yml
 xcodebuild test -scheme PiClient -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
 ```
 
-Run the bridge against a real pi session in the current directory:
+Run the bridge against a real pi session in the directory npm is invoked from:
 
 ```sh
-PI_BRIDGE_TOKEN=secret npm start -w bridge   # PI_BRIDGE_PORT defaults to 8787
+PI_BRIDGE_TOKEN=secret npm start -w bridge                  # here; PI_BRIDGE_PORT defaults to 8787
+PI_BRIDGE_TOKEN=secret npm start --prefix <this repo> -w bridge   # from another project
 ```
 
 Notifications: set `PI_BRIDGE_NTFY_TOPIC` to an unguessable topic (and `PI_BRIDGE_NTFY_URL` if self-hosting) to get a notification when a run settles.

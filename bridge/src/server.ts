@@ -275,13 +275,19 @@ function serve(
     send({
       type: "result",
       id,
-      result: { protocolVersion: PROTOCOL_VERSION, ...(ntfy && { ntfy }) },
+      result: {
+        protocolVersion: PROTOCOL_VERSION,
+        epoch: session.epoch,
+        ...(ntfy && { ntfy }),
+      },
     });
     pinger = setInterval(() => ws.ping(), pingIntervalMs);
-    // A missing or invalid cursor means "nothing seen": a full snapshot is always safe.
-    const lastSeq = Number.isInteger(params.lastSeq)
-      ? (params.lastSeq as number)
-      : 0;
+    // A missing or invalid cursor, or one from another bridge run, means
+    // "nothing seen": a full snapshot is always safe.
+    const lastSeq =
+      params.epoch === session.epoch && Number.isInteger(params.lastSeq)
+        ? (params.lastSeq as number)
+        : 0;
     unsubscribe = session.subscribe(lastSeq, (event) =>
       send({ type: "event", ...event })
     );

@@ -1,13 +1,13 @@
 import Foundation
 
-/// The conversation as the user reads it, built purely from bridge `event` records.
+/// The conversation as the user reads it, built from bridge `event` records.
 ///
 /// `entries` is the timeline: messages, the tool calls each turn made, and how each run ended.
 /// Streamed `delta`s grow a provisional assistant message; its `messageEnd` replaces it with the
-/// authoritative text, and a `transcript` snapshot replaces everything (snapshots carry neither
-/// tool calls nor past runs, so those only appear for what was seen live or replayed). Switching
+/// authoritative text, and a `transcript` snapshot replaces everything (snapshots carry no past
+/// runs or tool durations, so those only appear for what was seen live or replayed). Switching
 /// session arrives as such a snapshot, which also moves the cursor to the new session's `seq`.
-/// `lastSeq` is the replay cursor to present on the next (re)connect.
+/// `epoch` and `lastSeq` form the replay cursor to present on the next (re)connect.
 struct Transcript: Equatable, Sendable {
   struct Message: Equatable, Identifiable, Sendable {
     enum Role: Sendable { case user, assistant }
@@ -85,6 +85,8 @@ struct Transcript: Equatable, Sendable {
   private(set) var sessionId: String?
   /// `seq` of the newest event applied; 0 before any.
   private(set) var lastSeq = 0
+  /// The bridge run `lastSeq` counts in, from the latest `hello` result; nil before the first.
+  private(set) var epoch: String?
 
   private var nextId = 0
 
@@ -94,29 +96,31 @@ struct Transcript: Equatable, Sendable {
   var toolCalls: [ToolCall] { entries.compactMap { if case .toolCall(let c) = $0 { c } else { nil } } }
   var runs: [Run] { entries.compactMap { if case .run(let r) = $0 { r } else { nil } } }
 
-  /// Applies one record received at `now`; anything that is not an event is ignored. Events at or
-  /// below `lastSeq` (already seen, e.g. replayed twice) are skipped, except snapshots, which are
-  /// authoritative and may legitimately carry a lower `seq` after a bridge restart.
+  /// Applies one record received at `now`: events, and the `epoch` of a `hello` result; anything
+  /// else is ignored. Events at or below `lastSeq` (already seen, e.g. replayed twice) are skipped,
+  /// except snapshots, which are authoritative and may legitimately carry a lower `seq` after a
+  /// bridge restart.
   mutating func apply(_ record: Record, now: Date = .now) {
-    guard record.type == "event", let seq = record.seq, let name = record.name else { return }
+    if record.type == "result", let epoch = record.result?.epoch { self.epoch = epoch }
+    guard record.type == "event", let seq = record.seq, let name = record.name,
+      name == "transcript" || seq > lastSeq
+    else { return }
+    lastSeq = seq
     let data = record.data
-    if name == "transcript" {
+    switch name {
+    case "transcript":
       sessionId = data?.sessionId
       replaceAll(with: data?.messages ?? [], runningFor: data?.running == true ? data?.elapsedMs ?? 0 : nil, now: now)
       queue = Queue(data)
-    } else if seq > lastSeq {
-      switch name {
-      case "runStarted": runStartedAt = now
-      case "userMessage": entries.append(.message(makeMessage(.user, text: data?.text ?? "", thinking: "")))
-      case "queue": queue = Queue(data)
-      case "delta": appendDelta(kind: data?.kind, text: data?.text ?? "")
-      case "messageEnd": finishMessage(text: data?.text ?? "", thinking: data?.thinking ?? "")
-      case "toolCall": if let data { applyToolCall(data) }
-      case "runSettled": settleRun(data)
-      default: break
-      }
+    case "runStarted": runStartedAt = now
+    case "userMessage": entries.append(.message(makeMessage(.user, text: data?.text ?? "", thinking: "")))
+    case "queue": queue = Queue(data)
+    case "delta": appendDelta(kind: data?.kind, text: data?.text ?? "")
+    case "messageEnd": finishMessage(text: data?.text ?? "", thinking: data?.thinking ?? "")
+    case "toolCall": if let data { applyToolCall(data) }
+    case "runSettled": settleRun(data)
+    default: break
     }
-    lastSeq = seq
   }
 
   /// `runningFor` is how long the active run has been going, nil if idle.
@@ -125,11 +129,24 @@ struct Transcript: Equatable, Sendable {
   ) {
     entries = []
     for message in wire {
-      var next = makeMessage(
-        message.role == "user" ? .user : .assistant, text: message.text,
-        thinking: message.thinking ?? "")
-      next.isStreaming = message.streaming ?? false
-      entries.append(.message(next))
+      switch message.role {
+      case "user", "assistant":
+        var next = makeMessage(
+          message.role == "user" ? .user : .assistant, text: message.text ?? "",
+          thinking: message.thinking ?? "")
+        next.isStreaming = message.streaming ?? false
+        entries.append(.message(next))
+      case "toolCall":
+        guard let callId = message.toolCallId else { continue }
+        let index = appendToolCall(callId: callId, name: message.toolName ?? "")
+        guard case .toolCall(var call) = entries[index] else { continue }
+        call.args = message.args
+        call.output = message.output ?? ""
+        if let isError = message.isError { call.status = isError ? .failed : .succeeded }
+        entries[index] = .toolCall(call)
+      default:
+        continue  // an entry kind this app does not know
+      }
     }
     runStartedAt = elapsedMs.map { now.addingTimeInterval(-Double($0) / 1000) }
   }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   GatewayEvent,
   GatewayStats,
@@ -44,13 +45,18 @@ export interface SessionStats extends GatewayStats {
  * to `notifier`, whether or not anyone is connected.
  */
 export class Session {
+  /**
+   * Names this run of the bridge: `seq` restarts with every process, so a
+   * cursor is only meaningful alongside the epoch it was handed out in.
+   */
+  readonly epoch = randomUUID();
   private seq = 0;
   private runStartedAt: number | undefined;
   /** Newest events, oldest first; holds `seq - log.length + 1 .. seq`. */
   private log: BridgeEvent[] = [];
-  /** The assistant message being generated: its deltas so far, not yet in the gateway's transcript. */
   private runs = 0;
   private runDurationMs = 0;
+  /** The assistant message being generated: its deltas so far, not yet in the gateway's transcript. */
   private streaming: { text: string; thinking: string } | undefined;
   private listeners = new Set<(event: BridgeEvent) => void>();
   private detach: () => void;
@@ -64,7 +70,7 @@ export class Session {
   }
 
   /**
-   * Brings a client that last saw `lastSeq` up to date, then keeps it live:
+   * Brings a client that last saw `lastSeq` (of this `epoch`) up to date, then keeps it live:
    * `listener` first receives what it missed — the events after `lastSeq` when
    * they are all still retained, otherwise one `transcript` snapshot carrying
    * the current seq — and then every new event. Delivery is gapless: catch-up

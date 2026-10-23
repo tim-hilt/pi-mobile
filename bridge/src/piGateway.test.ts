@@ -43,6 +43,8 @@ class FakePiSession implements PiSession {
   } as unknown as PiSession["resourceLoader"];
   /** When set, `prompt` rejects with it before the prompt is accepted. */
   rejectWith: Error | undefined;
+  /** How pi disposes of a prompt; `handled` means an extension command consumed it without a run. */
+  disposition: "started" | "handled" = "started";
   /** Resolves the pending `prompt()` call, as pi does when the run finishes. */
   finishRun: () => void = () => {};
 
@@ -50,7 +52,8 @@ class FakePiSession implements PiSession {
 
   prompt = async (text: string, options?: PromptOptions) => {
     if (this.rejectWith) throw this.rejectWith;
-    options?.preflightResult?.("started");
+    options?.preflightResult?.(this.disposition);
+    if (this.disposition === "handled") return;
     return new Promise<void>((resolve) => (this.finishRun = resolve));
   };
   steer = async (text: string) => {
@@ -376,6 +379,14 @@ test("a refused prompt rejects and starts no run", async () => {
   expect(events).toEqual([]);
 });
 
+test("a prompt pi handles without a run (extension command) resolves and starts no run", async () => {
+  const { pi, gateway, events } = setup();
+  pi.disposition = "handled";
+
+  await gateway.prompt("/reload");
+  expect(events).toEqual([]);
+});
+
 test("steer and follow-up are forwarded to pi's queues", async () => {
   const { pi, gateway } = setup();
   await gateway.steer("left");
@@ -394,7 +405,7 @@ test("dispose stops event delivery and disposes the pi runtime", async () => {
   expect(events).toEqual([]);
 });
 
-test("the transcript holds completed user and assistant messages, text and thinking only", () => {
+test("the transcript holds user and assistant text and thinking, and each tool call after the turn that made it", () => {
   const { pi, gateway } = setup();
   pi.messages = [
     { role: "system", content: "be nice" },
@@ -415,11 +426,18 @@ test("the transcript holds completed user and assistant messages, text and think
         { type: "toolCall", id: "t1", name: "bash", arguments: {} },
       ],
     },
-    { role: "toolResult", toolCallId: "t1", content: [] },
-    // A tool-call-only turn has nothing to show.
+    {
+      role: "toolResult",
+      toolCallId: "t1",
+      content: [{ type: "text", text: "ok" }],
+      isError: false,
+    },
+    // A tool-call-only turn shows only its calls; t2 is still running.
     {
       role: "assistant",
-      content: [{ type: "toolCall", id: "t2", name: "bash", arguments: {} }],
+      content: [
+        { type: "toolCall", id: "t2", name: "read", arguments: { path: "a" } },
+      ],
     },
   ] as never;
 
@@ -427,6 +445,20 @@ test("the transcript holds completed user and assistant messages, text and think
     { role: "user", text: "hi" },
     { role: "user", text: "see this" },
     { role: "assistant", text: "Hello", thinking: "hm" },
+    {
+      role: "toolCall",
+      toolCallId: "t1",
+      toolName: "bash",
+      args: {},
+      output: "ok",
+      isError: false,
+    },
+    {
+      role: "toolCall",
+      toolCallId: "t2",
+      toolName: "read",
+      args: { path: "a" },
+    },
   ]);
 });
 

@@ -3,7 +3,7 @@ import Testing
 
 @testable import PiClient
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":1}}"# + "\n"
+private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":1,"epoch":"e1"}}"# + "\n"
 
 private func event(_ seq: Int, _ name: String, _ data: String) -> String {
   #"{"type":"event","seq":\#(seq),"name":"\#(name)","data":\#(data)}"# + "\n"
@@ -68,6 +68,7 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(client.transcript.messages[1].thinking == "hm")
     #expect(client.transcript.lastSeq == 7)
     #expect(hellos.value?.first?.contains(#""lastSeq":0"#) == true)
+    #expect(hellos.value?.first?.contains("epoch") == false)
   }
 
   @Test func deltasAssembleThenMessageEndReplacesThem() async throws {
@@ -135,6 +136,17 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(client.state == .connected)
     #expect(hellos.value?.count == 2)
     #expect(hellos.value?.last?.contains(#""lastSeq":4"#) == true)
+    #expect(hellos.value?.last?.contains(#""epoch":"e1""#) == true)
+  }
+
+  @Test func anEventSeenBeforeNeitherRepeatsNorRewindsTheCursor() throws {
+    var transcript = Transcript()
+    let frame = event(1, "runStarted", "{}") + delta(2, "text", "a") + delta(3, "text", "b") + delta(2, "text", "a")
+      + delta(3, "text", "b") + delta(4, "text", "c")
+    for record in try BridgeProtocol.records(in: frame) { transcript.apply(record) }
+
+    #expect(lines(transcript) == ["assistant: abc…"])
+    #expect(transcript.lastSeq == 4)
   }
 
   @Test func aSnapshotWithALowerSeqReplacesEverythingAfterABridgeRestart() async throws {
@@ -239,6 +251,25 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(calls.map(\.status) == [.running, .failed])
     #expect(calls.map(\.output) == ["par", "boom"])
     #expect(calls[1].durationMs == nil)
+  }
+
+  @Test func aSnapshotRestoresToolCallsAndLiveEventsContinueAnUnfinishedOne() throws {
+    var transcript = Transcript()
+    let frame =
+      event(
+        3, "transcript",
+        #"{"running":true,"messages":[{"role":"assistant","text":"","thinking":"plan"},"#
+          + #"{"role":"toolCall","toolCallId":"t1","toolName":"bash","args":{"command":"ls"},"output":"a","isError":true},"#
+          + #"{"role":"toolCall","toolCallId":"t2","toolName":"read","args":{}}]}"#)
+      + event(4, "toolCall", #"{"phase":"end","toolCallId":"t2","toolName":"read","output":"b","isError":false}"#)
+    for record in try BridgeProtocol.records(in: frame) { transcript.apply(record) }
+
+    #expect(entryKinds(transcript) == ["message", "tool", "tool"])
+    let calls = transcript.toolCalls
+    #expect(calls.map(\.name) == ["bash", "read"])
+    #expect(calls[0].args?.formatted.contains(#""command" : "ls""#) == true)
+    #expect(calls.map(\.output) == ["a", "b"])
+    #expect(calls.map(\.status) == [.failed, .succeeded])
   }
 
   @Test func theCurrentRunIsTimedFromItsStartAndSettlingEndsIt() async throws {
