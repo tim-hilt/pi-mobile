@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Message entry below the transcript: send a prompt when idle; during a run, steer or queue a
-/// follow-up, abort, and see (or cancel) what is still queued. Typing `/` offers the session's
+/// follow-up, abort, and see what is still queued. Typing `/` offers the session's
 /// skills and `@` its files; Tab (hardware keyboard) takes the first suggestion, Esc dismisses.
 struct ComposerView: View {
   let client: BridgeClient
@@ -16,7 +16,8 @@ struct ComposerView: View {
 
   private var transcript: Transcript { client.transcript }
   private var canSend: Bool {
-    client.state == .connected && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    client.state == .connected && transcript.sessionId != nil && !transcript.hasEnded
+      && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   private var trigger: Suggestions.Trigger? {
@@ -34,7 +35,7 @@ struct ComposerView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       if !picks.isEmpty { SuggestionBar(picks: picks, accept: accept, dismiss: dismiss) }
-      if !transcript.queue.isEmpty { QueueView(queue: transcript.queue, cancel: cancelQueue) }
+      if !transcript.queue.isEmpty { QueueView(queue: transcript.queue) }
       if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
       HStack(alignment: .bottom, spacing: 8) {
         TextField("Message", text: $draft, axis: .vertical)
@@ -61,8 +62,9 @@ struct ComposerView: View {
     .padding(.horizontal)
     .padding(.vertical, 8)
     .background(.bar)
-    .task(id: client.state) {
-      guard client.state == .connected else { return }
+    // Skills belong to the session: reload when joining another.
+    .task(id: client.state == .connected ? transcript.sessionId : nil) {
+      guard client.state == .connected, transcript.sessionId != nil else { return }
       skills = (try? await client.skills()) ?? []
     }
     .task(id: trigger) {
@@ -105,14 +107,6 @@ struct ComposerView: View {
     run(restoring: text) { try await client.send(text, mode: mode) }
   }
 
-  /// Cancels everything queued; the texts go back to the draft so nothing typed is lost.
-  private func cancelQueue() {
-    run {
-      let dropped = try await client.clearQueue()
-      draft = (dropped.steering + dropped.followUp + [draft]).filter { !$0.isEmpty }.joined(separator: "\n\n")
-    }
-  }
-
   /// Runs a command, showing its failure; `restoring` goes back to the draft if it fails.
   private func run(restoring text: String? = nil, _ command: @escaping () async throws -> Void) {
     failure = nil
@@ -130,15 +124,10 @@ struct ComposerView: View {
 /// Messages sent during a run that the agent has not taken in yet.
 private struct QueueView: View {
   let queue: Transcript.Queue
-  let cancel: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      HStack {
-        Text("Queued").font(.footnote.bold())
-        Spacer()
-        Button("Cancel all", action: cancel).font(.footnote)
-      }
+      Text("Queued").font(.footnote.bold())
       ForEach(Array(queue.steering.enumerated()), id: \.offset) { _, text in
         row(text, symbol: "arrow.turn.down.right", label: "Steer")
       }

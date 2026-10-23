@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import type {
   GatewayEvent,
   GatewayStats,
-  QueuedMessages,
   SessionGateway,
-  SessionSummary,
+  SessionHistory,
+  SharedSessionInfo,
   SkillInfo,
 } from "./gateway.js";
 import type { RunNotifier } from "./ntfy.js";
@@ -26,9 +26,6 @@ export class CommandError extends Error {
   }
 }
 
-/** How many sessions `sessions()` lists. */
-const RECENT_SESSIONS = 30;
-
 /** `GatewayStats` plus the run timing only the bridge observes. */
 export interface SessionStats extends GatewayStats {
   /** Runs that settled since this session became current. */
@@ -37,17 +34,26 @@ export interface SessionStats extends GatewayStats {
   runDurationMs: number;
 }
 
+/** A live session as `getSessions` lists it. */
+export interface LiveSession extends SharedSessionInfo {
+  running: boolean;
+  /** ISO 8601 time of the latest event. */
+  activeAt: string;
+}
+
+type Listener = (event: BridgeEvent) => void;
+
 /**
- * The session as the protocol sees it: turns the gateway's events into
- * sequenced `BridgeEvent`s (adding run timing), remembers recent ones so a
- * reconnecting client can catch up, and routes prompts to the gateway
- * according to whether a run is active. Every settled run is also announced
- * to `notifier`, whether or not anyone is connected.
+ * One shared pi session as the protocol sees it: turns the gateway's events
+ * into sequenced `BridgeEvent`s (adding run timing), remembers recent ones so
+ * a rejoining client can catch up, and routes prompts according to whether a
+ * run is active. Every settled run is also announced to `notifier`, whether
+ * or not anyone has joined.
  */
 export class Session {
   /**
-   * Names this run of the bridge: `seq` restarts with every process, so a
-   * cursor is only meaningful alongside the epoch it was handed out in.
+   * Names this share: `seq` restarts with every one, so a cursor is only
+   * meaningful alongside the epoch it was handed out in.
    */
   readonly epoch = randomUUID();
   private seq = 0;
@@ -56,9 +62,11 @@ export class Session {
   private log: BridgeEvent[] = [];
   private runs = 0;
   private runDurationMs = 0;
-  /** The assistant message being generated: its deltas so far, not yet in the gateway's transcript. */
+  private activeAt = new Date();
+  /** The assistant message being generated: its deltas so far, not yet in the gateway's history. */
   private streaming: { text: string; thinking: string } | undefined;
-  private listeners = new Set<(event: BridgeEvent) => void>();
+  /** Joined clients; `false` while one waits for its snapshot and gets no events yet. */
+  private listeners = new Map<Listener, boolean>();
   private detach: () => void;
 
   constructor(
@@ -69,20 +77,29 @@ export class Session {
     this.detach = gateway.subscribe((event) => this.publish(event));
   }
 
+  /** The session as `getSessions` lists it. */
+  describe(): LiveSession {
+    return {
+      ...this.gateway.info(),
+      running: this.runStartedAt !== undefined,
+      activeAt: this.activeAt.toISOString(),
+    };
+  }
+
+  get id(): string {
+    return this.gateway.info().id;
+  }
+
   /**
-   * Brings a client that last saw `lastSeq` (of this `epoch`) up to date, then keeps it live:
-   * `listener` first receives what it missed — the events after `lastSeq` when
-   * they are all still retained, otherwise one `transcript` snapshot carrying
-   * the current seq — and then every new event. Delivery is gapless: catch-up
-   * and subscription happen in one step. A fresh client (`lastSeq` 0) always
-   * gets the snapshot, since history predates the bridge's event log.
+   * Brings a client that last saw `lastSeq` of `epoch` up to date, then keeps
+   * it live: `listener` first receives what it missed — the events after
+   * `lastSeq` when they are all still retained, otherwise one `transcript`
+   * snapshot carrying the current seq — and then every new event, gaplessly.
    * Returns the unsubscribe function.
    */
-  subscribe(
-    lastSeq: number,
-    listener: (event: BridgeEvent) => void
-  ): () => void {
+  subscribe(lastSeq: number, epoch: unknown, listener: Listener): () => void {
     const replayable =
+      epoch === this.epoch &&
       lastSeq > 0 &&
       lastSeq <= this.seq &&
       lastSeq >= this.seq - this.log.length;
@@ -91,18 +108,18 @@ export class Session {
         this.log.length - (this.seq - lastSeq)
       ))
         listener(event);
+      this.listeners.set(listener, true);
     } else {
-      listener(this.snapshot());
+      this.listeners.set(listener, false);
+      this.sendSnapshot([listener]);
     }
-    this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
   /**
    * Sends `text` to the agent. On an idle session it starts a run and `mode`
    * is irrelevant. During a run, `mode` picks steering or follow-up delivery;
-   * omitting it is refused rather than guessed. Rejects with `CommandError`
-   * on refusal, or with the gateway's own error if it refuses the prompt.
+   * omitting it is refused rather than guessed.
    */
   async prompt(text: string, mode?: "steer" | "followUp"): Promise<void> {
     if (this.runStartedAt === undefined) return this.gateway.prompt(text);
@@ -114,90 +131,76 @@ export class Session {
     );
   }
 
-  /** Stops the active run; a no-op when idle. Rejects with the gateway's own error if it fails. */
   abort(): Promise<void> {
     return this.gateway.abort();
   }
 
-  /** Drops every queued message and returns the dropped texts. */
-  clearQueue(): QueuedMessages {
-    return this.gateway.clearQueue();
-  }
-
-  /** The most recent stored sessions, newest first, and which one is current. */
-  async sessions(): Promise<{
-    sessions: SessionSummary[];
-    currentId: string;
-  }> {
-    const all = await this.gateway.sessions();
+  /** The session's counts, with the runs this bridge has timed for it. */
+  async stats(): Promise<SessionStats> {
     return {
-      sessions: all.slice(0, RECENT_SESSIONS),
-      currentId: this.gateway.sessionId(),
-    };
-  }
-
-  /**
-   * Replaces the session with a fresh one. Listeners then receive its empty
-   * snapshot as the next event. Rejects with `CommandError` while a run is active.
-   */
-  async newSession(): Promise<void> {
-    this.assertIdle("starting a new session");
-    await this.gateway.newSession();
-  }
-
-  /**
-   * Makes the stored session `id` current; listeners then receive its snapshot
-   * as the next event. Switching to the current session changes nothing.
-   * Rejects with `CommandError` for an unknown `id` or while a run is active.
-   */
-  async switchSession(id: string): Promise<void> {
-    this.assertIdle("switching sessions");
-    if (id === this.gateway.sessionId()) return;
-    const known = (await this.gateway.sessions()).some((s) => s.id === id);
-    if (!known)
-      throw new CommandError("unknownSession", `no session with id "${id}"`);
-    await this.gateway.switchSession(id);
-  }
-
-  /** The current session's counts, with the runs this bridge has timed for it. */
-  stats(): SessionStats {
-    return {
-      ...this.gateway.stats(),
+      ...(await this.gateway.stats()),
       runs: this.runs,
       runDurationMs: this.runDurationMs,
     };
   }
 
-  /** The skills the user can invoke as `/skill:<name>`. */
-  skills(): SkillInfo[] {
+  skills(): Promise<SkillInfo[]> {
     return this.gateway.skills();
   }
 
-  /** Workspace files matching `query`, best first; see `SessionGateway.searchFiles`. */
   searchFiles(query: string, limit: number): Promise<string[]> {
     return this.gateway.searchFiles(query, limit);
   }
 
-  close(): void {
+  /** Pi stopped sharing: joined clients get `sessionEnded`, then nothing more. */
+  end(): void {
     this.detach();
+    const ended = {
+      seq: ++this.seq,
+      name: "sessionEnded",
+      data: { sessionId: this.id },
+    };
+    for (const listener of this.listeners.keys()) listener(ended);
     this.listeners.clear();
   }
 
-  /** The complete transcript as one event; shares the seq of the latest event it reflects. */
-  private snapshot(): BridgeEvent {
-    const messages: Record<string, unknown>[] = [...this.gateway.transcript()];
+  /**
+   * Fetches the history and sends `targets` a snapshot of it. Until then they
+   * get no events: the history reflects every event received before it, so
+   * the snapshot at the then-current seq covers them all. Without a history
+   * (the session is ending or being replaced, see `SessionGateway.history`)
+   * they just go live: `sessionEnded` or a fresh snapshot follows.
+   */
+  private sendSnapshot(targets: Listener[]): void {
+    for (const target of targets) this.listeners.set(target, false);
+    const deliver = (history?: SessionHistory) => {
+      const snapshot = history && this.snapshot(history);
+      for (const target of targets) {
+        if (!this.listeners.has(target)) continue;
+        if (snapshot) target(snapshot);
+        this.listeners.set(target, true);
+      }
+    };
+    this.gateway.history(deliver);
+  }
+
+  private snapshot(history: SessionHistory): BridgeEvent {
+    const messages: Record<string, unknown>[] = [...history.messages];
     if (this.streaming)
       messages.push({ role: "assistant", ...this.streaming, streaming: true });
     const startedAt = this.runStartedAt;
     const running = startedAt !== undefined;
+    const { id, cwd } = this.gateway.info();
     return {
       seq: this.seq,
       name: "transcript",
       data: {
+        sessionId: id,
+        cwd,
         messages,
         running,
-        sessionId: this.gateway.sessionId(),
-        ...this.gateway.queue(),
+        steering: history.steering,
+        followUp: history.followUp,
         // The app has no other way to learn when a run it joined midway began.
         ...(running && {
           elapsedMs: Math.round(performance.now() - startedAt),
@@ -206,18 +209,10 @@ export class Session {
     };
   }
 
-  private assertIdle(action: string): void {
-    if (this.runStartedAt !== undefined)
-      throw new CommandError(
-        "runActive",
-        `a run is active; abort it before ${action}`
-      );
-  }
-
   /**
-   * Starts the event history over for a replaced session. The switch takes a
-   * seq of its own and the log is emptied, so a cursor from before it can
-   * never replay the old session's events: it falls back to a snapshot.
+   * Pi replaced its session: the event history starts over. The switch takes
+   * a seq of its own and the log is emptied, so a cursor from before it can
+   * never replay the old session's events.
    */
   private restart(): void {
     this.runStartedAt = undefined;
@@ -226,11 +221,11 @@ export class Session {
     this.runDurationMs = 0;
     this.log = [];
     this.seq++;
-    const snapshot = this.snapshot();
-    for (const listener of this.listeners) listener(snapshot);
+    this.sendSnapshot([...this.listeners.keys()]);
   }
 
   private publish(event: GatewayEvent): void {
+    this.activeAt = new Date();
     if (event.name === "sessionChanged") return this.restart();
     const { name, ...data } = event;
     if (event.name === "runStarted") {
@@ -243,16 +238,16 @@ export class Session {
       this.streaming = undefined;
     } else if (event.name === "runSettled") {
       const durationMs = Math.round(
-        performance.now() - (this.runStartedAt ?? 0)
+        performance.now() - (this.runStartedAt ?? performance.now())
       );
       this.runStartedAt = undefined;
       this.streaming = undefined;
       this.runs++;
       this.runDurationMs += durationMs;
       Object.assign(data, { durationMs });
-      const sessionName = this.gateway.sessionName();
+      const { id, name: sessionName } = this.gateway.info();
       this.notifier?.runSettled({
-        sessionId: this.gateway.sessionId(),
+        sessionId: id,
         ...(sessionName !== undefined && { sessionName }),
         stopReason: event.stopReason,
         durationMs,
@@ -261,6 +256,41 @@ export class Session {
     const wire = { seq: ++this.seq, name, data };
     this.log.push(wire);
     if (this.log.length > this.replayLimit) this.log.shift();
-    for (const listener of this.listeners) listener(wire);
+    for (const [listener, ready] of this.listeners) if (ready) listener(wire);
+  }
+}
+
+/** Every session pi currently shares with the bridge. */
+export class SessionHub {
+  private sessions = new Set<Session>();
+
+  constructor(
+    private replayLimit?: number,
+    private notifier?: RunNotifier
+  ) {}
+
+  add(gateway: SessionGateway): Session {
+    const session = new Session(gateway, this.replayLimit, this.notifier);
+    this.sessions.add(session);
+    return session;
+  }
+
+  remove(session: Session): void {
+    if (this.sessions.delete(session)) session.end();
+  }
+
+  /** Most recently active first. */
+  list(): LiveSession[] {
+    return [...this.sessions]
+      .map((s) => s.describe())
+      .sort((a, b) => b.activeAt.localeCompare(a.activeAt));
+  }
+
+  find(id: string): Session | undefined {
+    for (const session of this.sessions) if (session.id === id) return session;
+  }
+
+  close(): void {
+    for (const session of this.sessions) this.remove(session);
   }
 }

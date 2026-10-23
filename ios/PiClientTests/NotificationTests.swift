@@ -70,7 +70,7 @@ private let finished = #"{"sessionId":"s7","sessionName":"refactor auth","stopRe
   @Test func theHelloResultTellsTheClientWhereNotificationsArePublished() async throws {
     let bridge = try await FakeBridge(token: "t") { _, peer in
       peer.send(
-        #"{"type":"result","id":1,"result":{"protocolVersion":1,"ntfy":{"baseUrl":"https://ntfy.example","topic":"xk3"}}}"#
+        #"{"type":"result","id":1,"result":{"protocolVersion":2,"ntfy":{"baseUrl":"https://ntfy.example","topic":"xk3"}}}"#
           + "\n")
     }
     defer { bridge.stop() }
@@ -140,13 +140,13 @@ private let finished = #"{"sessionId":"s7","sessionName":"refactor auth","stopRe
     #expect(received.value == [])
   }
 
-  @Test func showingAnotherSessionSwitchesToIt() async throws {
+  @Test func showingAnotherSessionJoinsIt() async throws {
     let (client, bridge, received) = try await connected(sessionId: "s1")
     defer { bridge.stop() }
 
     try await client.show(sessionId: "s7")
 
-    #expect(received.value?.first?.contains(#""name":"switchSession""#) == true)
+    #expect(received.value?.first?.contains(#""name":"joinSession""#) == true)
     #expect(received.value?.first?.contains(#""id":"s7""#) == true)
   }
 
@@ -159,7 +159,7 @@ private let finished = #"{"sessionId":"s7","sessionName":"refactor auth","stopRe
     client.connect(to: BridgeConfig(url: bridge.url, token: "t"))
     try await showing.value
 
-    #expect(received.value?.first?.contains(#""name":"switchSession""#) == true)
+    #expect(received.value?.first?.contains(#""name":"joinSession""#) == true)
   }
 
   @Test func showingASessionGivesUpWhenTheBridgeRefusesUs() async throws {
@@ -183,7 +183,7 @@ private let finished = #"{"sessionId":"s7","sessionName":"refactor auth","stopRe
     let bridge = try await FakeBridge(token: "t") { frame, peer in
       if frame.contains(#""name":"hello""#) {
         peer.send(
-          #"{"type":"result","id":1,"result":{"protocolVersion":1}}"# + "\n"
+          #"{"type":"result","id":1,"result":{"protocolVersion":2}}"# + "\n"
             + #"{"type":"event","seq":1,"name":"transcript","data":{"sessionId":"\#(sessionId)","running":false,"messages":[]}}"#
             + "\n")
       } else {

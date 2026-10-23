@@ -3,7 +3,7 @@ import Testing
 
 @testable import PiClient
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":1,"epoch":"e1"}}"# + "\n"
+private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":2,"epoch":"e1"}}"# + "\n"
 
 private func event(_ seq: Int, _ name: String, _ data: String) -> String {
   #"{"type":"event","seq":\#(seq),"name":"\#(name)","data":\#(data)}"# + "\n"
@@ -67,8 +67,7 @@ private func lines(_ transcript: Transcript) -> [String] {
       ])
     #expect(client.transcript.messages[1].thinking == "hm")
     #expect(client.transcript.lastSeq == 7)
-    #expect(hellos.value?.first?.contains(#""lastSeq":0"#) == true)
-    #expect(hellos.value?.first?.contains("epoch") == false)
+    #expect(hellos.value?.count == 1)  // nothing on show yet: no rejoin
   }
 
   @Test func deltasAssembleThenMessageEndReplacesThem() async throws {
@@ -117,26 +116,67 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(lines(client.transcript) == ["user: hi", "assistant: Hello"])
   }
 
-  @Test func aDroppedSocketReconnectsAndResumesAtTheCursor() async throws {
-    let (client, bridge, hellos) = try await connect { helloNumber, _, peer in
-      peer.send(ack)
-      if helloNumber == 1 {
-        peer.send(event(3, "transcript", #"{"running":true,"messages":[]}"#))
+  @Test func aDroppedSocketReconnectsAndRejoinsAtTheCursor() async throws {
+    let (client, bridge, frames) = try await connect { number, frame, peer in
+      if frame.contains(#""name":"hello""#) { return peer.send(ack) }
+      // Frames alternate hello, joinSession: the 2nd is the first join, the 4th the rejoin.
+      if number == 2 {
+        peer.send(#"{"type":"result","id":2,"result":{"epoch":"e1"}}"# + "\n")
+        peer.send(event(3, "transcript", #"{"sessionId":"a","running":true,"messages":[]}"#))
         peer.send(delta(4, "text", "Hel"))
         Task { try? await Task.sleep(for: .milliseconds(50)); peer.drop() }
       } else {
+        peer.send(#"{"type":"result","id":2,"result":{"epoch":"e1"}}"# + "\n")
         peer.send(delta(4, "text", "Hel"))  // already seen: must not be applied twice
         peer.send(delta(5, "text", "lo"))
       }
     }
     defer { bridge.stop() }
+    await waitUntil("connected") { client.state == .connected }
+
+    try await client.join(sessionId: "a")
 
     await waitUntil("resumed events") { client.transcript.lastSeq == 5 }
     #expect(lines(client.transcript) == ["assistant: Hello…"])
     #expect(client.state == .connected)
-    #expect(hellos.value?.count == 2)
-    #expect(hellos.value?.last?.contains(#""lastSeq":4"#) == true)
-    #expect(hellos.value?.last?.contains(#""epoch":"e1""#) == true)
+    let rejoin = try #require(frames.value?.last)
+    #expect(frames.value?.count == 4)
+    #expect(rejoin.contains(#""name":"joinSession""#))
+    #expect(rejoin.contains(#""id":"a""#))
+    #expect(rejoin.contains(#""lastSeq":4"#))
+    #expect(rejoin.contains(#""epoch":"e1""#))
+  }
+
+  @Test func aSessionThatEndsStaysReadableButIsMarkedEnded() async throws {
+    let (client, bridge, _) = try await connect { _, _, peer in
+      peer.send(ack)
+      peer.send(event(1, "transcript", #"{"sessionId":"a","running":true,"messages":[{"role":"user","text":"hi"}]}"#))
+      peer.send(event(2, "sessionEnded", #"{"sessionId":"a"}"#))
+    }
+    defer { bridge.stop() }
+
+    await waitUntil("ended") { client.transcript.hasEnded }
+    #expect(lines(client.transcript) == ["user: hi"])
+    #expect(!client.transcript.isRunning)
+  }
+
+  @Test func joiningASessionMovesTheTranscriptAndCursorToIt() async throws {
+    let (client, bridge, frames) = try await connect { _, frame, peer in
+      if frame.contains(#""name":"hello""#) { return peer.send(ack) }
+      peer.send(#"{"type":"result","id":2,"result":{"epoch":"e2"}}"# + "\n")
+      peer.send(event(0, "transcript", #"{"sessionId":"b","cwd":"/work/b","running":false,"messages":[{"role":"user","text":"in b"}]}"#))
+    }
+    defer { bridge.stop() }
+    await waitUntil("connected") { client.state == .connected }
+
+    try await client.join(sessionId: "b")
+
+    await waitUntil("snapshot") { client.transcript.sessionId == "b" }
+    #expect(client.transcript.epoch == "e2")
+    #expect(client.transcript.cwd == "/work/b")
+    #expect(lines(client.transcript) == ["user: in b"])
+    // A session not on show is joined from scratch: no cursor.
+    #expect(frames.value?.last?.contains("lastSeq") == false)
   }
 
   @Test func anEventSeenBeforeNeitherRepeatsNorRewindsTheCursor() throws {

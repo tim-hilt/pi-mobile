@@ -1,5 +1,5 @@
-- [ ] I don't need to start a session on the phone. Instead, I want to see and join all active pi sessions on the phone -> Session live sharing
-- [ ] Don't tie the bridge to one directory. It should work with all active pi sessions across directories
+- [x] I don't need to start a session on the phone. Instead, I want to see and join all active pi sessions on the phone -> Session live sharing
+- [x] Don't tie the bridge to one directory. It should work with all active pi sessions across directories
 - [ ] Show active model, directory, context window ("18.8k/1.0M") and session price in status bar
 - [ ] Let the user choose the active model on the phone
 - [ ] Render agent answers as markdown on the phone

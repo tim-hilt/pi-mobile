@@ -32,12 +32,12 @@ enum PromptMode: String, Sendable {
 ///
 /// Both are pushed by the client as the socket progresses (observe them with SwiftUI or
 /// `withObservationTracking`); callers never poll. `connect` replaces any existing connection.
-/// Once connected, a dropped or unreachable socket is retried with exponential backoff, resuming
-/// from the transcript's replay cursor; only a refusal by the bridge (`failed`) or `disconnect`
-/// ends the attempts.
+/// Once connected, a dropped or unreachable socket is retried with exponential backoff, rejoining
+/// the session on show from the transcript's replay cursor; only a refusal by the bridge
+/// (`failed`) or `disconnect` ends the attempts.
 ///
-/// Commands (`send`, `abort`, `clearQueue`, `skills`, `searchFiles`, `sessions`, `newSession`,
-/// `switchSession`, `stats`, `show`) are async: they return once the bridge has answered
+/// Commands (`send`, `abort`, `skills`, `searchFiles`, `sessions`, `join`, `joinMostRecent`,
+/// `stats`, `show`) are async: they return once the bridge has answered
 /// and throw its `ProtocolError`, or `CommandError` if the connection is not usable. Their effects
 /// show up in `transcript` through the events the bridge streams, never through the return value.
 @MainActor @Observable
@@ -97,12 +97,6 @@ final class BridgeClient {
     _ = try await command("abort")
   }
 
-  /// Drops every queued message and returns what was dropped, e.g. to put back in the composer.
-  func clearQueue() async throws -> Transcript.Queue {
-    let result = try await command("clearQueue")
-    return Transcript.Queue(steering: result.steering ?? [], followUp: result.followUp ?? [])
-  }
-
   /// The session's skills, invoked by sending `/skill:<name>`.
   func skills() async throws -> [Skill] {
     try await command("listSkills").skills ?? []
@@ -114,26 +108,37 @@ final class BridgeClient {
     try await command("searchFiles", ["query": .string(query)]).files ?? []
   }
 
-  /// The recent stored sessions, newest first.
+  /// The live pi sessions, most recently active first.
   func sessions() async throws -> SessionList {
     let result = try await command("getSessions")
-    return SessionList(sessions: result.sessions ?? [], currentId: result.currentId)
+    return SessionList(sessions: result.sessions ?? [], joinedId: result.joinedId)
   }
 
-  /// Starts a fresh session. The bridge refuses (`runActive`) while a run is active; on success
-  /// `transcript` is replaced by the empty new session.
-  func newSession() async throws {
-    _ = try await command("newSession")
+  /// Shows the live session `id`: its snapshot replaces `transcript`, then it streams. Rejoining
+  /// the session on show resumes from the replay cursor. If the bridge no longer knows the session
+  /// on show (`unknownSession`), the transcript is marked ended.
+  func join(sessionId id: String) async throws {
+    var params: [String: JSONValue] = ["id": .string(id)]
+    if id == transcript.sessionId, let epoch = transcript.epoch {
+      params["lastSeq"] = .number(Double(transcript.lastSeq))
+      params["epoch"] = .string(epoch)
+    }
+    do {
+      _ = try await command("joinSession", params)
+    } catch let error as ProtocolError where error.code == "unknownSession" && id == transcript.sessionId {
+      transcript.markEnded()
+      throw error
+    }
   }
 
-  /// Makes the stored session `id` current, with the same refusal and effect as `newSession`.
-  func switchSession(id: String) async throws {
-    _ = try await command("switchSession", ["id": .string(id)])
+  /// Joins the most recently active live session, if there is one.
+  func joinMostRecent() async throws {
+    if let latest = try await sessions().sessions.first { try await join(sessionId: latest.id) }
   }
 
   /// Makes `sessionId` the session on show, once connected (e.g. after launching from a
   /// notification). Throws `CommandError.notConnected` if the bridge refuses us or stays out of
-  /// reach for 10 s, or the bridge's refusal of the switch (`runActive`).
+  /// reach for 10 s, or the bridge's refusal to join (`unknownSession`).
   func show(sessionId: String) async throws {
     let deadline = ContinuousClock.now + .seconds(10)
     while state != .connected {
@@ -141,7 +146,7 @@ final class BridgeClient {
       guard ContinuousClock.now < deadline else { throw CommandError.notConnected }
       try await Task.sleep(for: .milliseconds(50))
     }
-    if transcript.sessionId != sessionId { try await switchSession(id: sessionId) }
+    if transcript.sessionId != sessionId || transcript.hasEnded { try await join(sessionId: sessionId) }
   }
 
   /// Counts and run timing of the current session.
@@ -223,8 +228,7 @@ final class BridgeClient {
     let helloId = 1
     var wasConnected = false
     do {
-      try await socket.send(
-        .string(BridgeProtocol.helloFrame(id: helloId, lastSeq: transcript.lastSeq, epoch: transcript.epoch)))
+      try await socket.send(.string(BridgeProtocol.helloFrame(id: helloId)))
       while true {
         guard case .string(let frame) = try await socket.receive() else { continue }
         for record in try BridgeProtocol.records(in: frame) {
@@ -236,6 +240,10 @@ final class BridgeClient {
             if case .failed = next { return .refused }
             ntfy = record.result?.ntfy
             wasConnected = true
+            // Back to the session on show, catching up from where we left it.
+            if let id = transcript.sessionId, !transcript.hasEnded {
+              Task { try? await join(sessionId: id) }
+            }
           }
         }
       }

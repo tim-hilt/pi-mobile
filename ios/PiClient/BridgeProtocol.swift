@@ -3,14 +3,11 @@ import Foundation
 /// Bridge Protocol wire format. See docs/protocol.md.
 enum BridgeProtocol {
   /// Version negotiated on connect.
-  static let version = 1
+  static let version = 2
 
-  /// Newline-terminated `hello` command: the mandatory first record of a connection. `lastSeq`
-  /// and its `epoch` are the replay cursor; nil `epoch` (never connected) omits it.
-  static func helloFrame(id: Int, lastSeq: Int, epoch: String?) -> String {
-    var params: [String: JSONValue] = ["protocolVersion": .number(Double(version)), "lastSeq": .number(Double(lastSeq))]
-    if let epoch { params["epoch"] = .string(epoch) }
-    return commandFrame(id: id, name: "hello", params: params)
+  /// Newline-terminated `hello` command: the mandatory first record of a connection.
+  static func helloFrame(id: Int) -> String {
+    commandFrame(id: id, name: "hello", params: ["protocolVersion": .number(Double(version))])
   }
 
   /// Newline-terminated `command` record.
@@ -47,52 +44,58 @@ struct Skill: Decodable, Equatable, Identifiable, Sendable {
   var id: String { name }
 }
 
-/// A stored session as listed for switching.
-struct SessionSummary: Decodable, Equatable, Identifiable, Sendable {
+/// A pi session running on the Mac, as listed for joining.
+struct LiveSession: Decodable, Equatable, Identifiable, Sendable {
   let id: String
   /// The user-given name, if any.
   let name: String?
-  /// The session's first user message.
+  /// The session's working directory.
+  let cwd: String
+  /// The session's first user message; empty while there is none.
   let preview: String
-  let modifiedAt: Date
-  let messageCount: Int
+  /// Whether a run is active.
+  let running: Bool
+  /// When the session last did anything.
+  let activeAt: Date
 
   /// What to call the session in a list: its name, else how it began.
   var title: String { name ?? (preview.isEmpty ? "New session" : preview) }
 
-  init(id: String, name: String?, preview: String, modifiedAt: Date, messageCount: Int) {
+  init(id: String, name: String?, cwd: String, preview: String, running: Bool, activeAt: Date) {
     self.id = id
     self.name = name
+    self.cwd = cwd
     self.preview = preview
-    self.modifiedAt = modifiedAt
-    self.messageCount = messageCount
+    self.running = running
+    self.activeAt = activeAt
   }
 
-  private enum CodingKeys: String, CodingKey { case id, name, preview, modifiedAt, messageCount }
+  private enum CodingKeys: String, CodingKey { case id, name, cwd, preview, running, activeAt }
 
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
     id = try values.decode(String.self, forKey: .id)
     name = try values.decodeIfPresent(String.self, forKey: .name)
+    cwd = try values.decode(String.self, forKey: .cwd)
     preview = try values.decode(String.self, forKey: .preview)
-    messageCount = try values.decode(Int.self, forKey: .messageCount)
+    running = try values.decode(Bool.self, forKey: .running)
     // The bridge sends ISO 8601 with milliseconds, which the plain strategy does not parse.
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    let text = try values.decode(String.self, forKey: .modifiedAt)
+    let text = try values.decode(String.self, forKey: .activeAt)
     guard let date = formatter.date(from: text) else {
       throw DecodingError.dataCorruptedError(
-        forKey: .modifiedAt, in: values, debugDescription: "not an ISO 8601 date: \(text)")
+        forKey: .activeAt, in: values, debugDescription: "not an ISO 8601 date: \(text)")
     }
-    modifiedAt = date
+    activeAt = date
   }
 }
 
-/// `getSessions` result: the recent sessions, newest first.
+/// `getSessions` result: the live sessions, most recently active first.
 struct SessionList: Equatable, Sendable {
-  let sessions: [SessionSummary]
-  /// The session the bridge drives now; not in `sessions` while it is still empty.
-  let currentId: String?
+  let sessions: [LiveSession]
+  /// The session this connection is joined to, if any.
+  let joinedId: String?
 }
 
 /// `getStats` result for the current session.
@@ -127,36 +130,31 @@ struct Record: Decodable, Sendable {
   struct CommandResult: Sendable {
     /// `hello`.
     let protocolVersion: Int?
-    /// `hello`: the bridge run that event `seq`s count in.
+    /// `joinSession`: the share of the session that event `seq`s count in.
     let epoch: String?
     /// `hello`: where settled runs are announced; absent when the bridge does not announce them.
     let ntfy: NtfyTopic?
-    /// `clearQueue`: the texts dropped.
-    let steering: [String]?
-    let followUp: [String]?
     /// `listSkills`.
     let skills: [Skill]?
     /// `searchFiles`: paths relative to the session's working directory, best first.
     let files: [String]?
     /// `getSessions`.
-    let sessions: [SessionSummary]?
-    let currentId: String?
+    let sessions: [LiveSession]?
+    let joinedId: String?
     /// `getStats`: present when the payload has every stats field.
     let stats: SessionStats?
 
     init(
-      protocolVersion: Int? = nil, epoch: String? = nil, ntfy: NtfyTopic? = nil, steering: [String]? = nil, followUp: [String]? = nil, skills: [Skill]? = nil,
-      files: [String]? = nil, sessions: [SessionSummary]? = nil, currentId: String? = nil, stats: SessionStats? = nil
+      protocolVersion: Int? = nil, epoch: String? = nil, ntfy: NtfyTopic? = nil, skills: [Skill]? = nil,
+      files: [String]? = nil, sessions: [LiveSession]? = nil, joinedId: String? = nil, stats: SessionStats? = nil
     ) {
       self.protocolVersion = protocolVersion
       self.epoch = epoch
       self.ntfy = ntfy
-      self.steering = steering
-      self.followUp = followUp
       self.skills = skills
       self.files = files
       self.sessions = sessions
-      self.currentId = currentId
+      self.joinedId = joinedId
       self.stats = stats
     }
   }
@@ -173,8 +171,10 @@ struct Record: Decodable, Sendable {
     let followUp: [String]?
     /// `transcript` snapshot.
     let messages: [WireMessage]?
-    /// `transcript` snapshot: the session it shows.
+    /// `transcript` snapshot and `sessionEnded`: the session concerned.
     let sessionId: String?
+    /// `transcript` snapshot: the session's working directory.
+    let cwd: String?
     let running: Bool?
     /// `transcript` snapshot: how long the active run has been going.
     let elapsedMs: Int?
@@ -257,7 +257,7 @@ enum JSONValue: Codable, Equatable, Sendable {
 
 extension Record.CommandResult: Decodable {
   private enum CodingKeys: String, CodingKey {
-    case protocolVersion, epoch, ntfy, steering, followUp, skills, files, sessions, currentId
+    case protocolVersion, epoch, ntfy, skills, files, sessions, joinedId
   }
 
   init(from decoder: Decoder) throws {
@@ -266,12 +266,10 @@ extension Record.CommandResult: Decodable {
       protocolVersion: try values.decodeIfPresent(Int.self, forKey: .protocolVersion),
       epoch: try values.decodeIfPresent(String.self, forKey: .epoch),
       ntfy: try values.decodeIfPresent(NtfyTopic.self, forKey: .ntfy),
-      steering: try values.decodeIfPresent([String].self, forKey: .steering),
-      followUp: try values.decodeIfPresent([String].self, forKey: .followUp),
       skills: try values.decodeIfPresent([Skill].self, forKey: .skills),
       files: try values.decodeIfPresent([String].self, forKey: .files),
-      sessions: try values.decodeIfPresent([SessionSummary].self, forKey: .sessions),
-      currentId: try values.decodeIfPresent(String.self, forKey: .currentId),
+      sessions: try values.decodeIfPresent([LiveSession].self, forKey: .sessions),
+      joinedId: try values.decodeIfPresent(String.self, forKey: .joinedId),
       // `getStats` flattens its fields into the result.
       stats: try? SessionStats(from: decoder))
   }

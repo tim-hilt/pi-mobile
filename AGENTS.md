@@ -7,6 +7,9 @@ Native iOS client for the pi agent
 - Use test driven development (red, green, refactor) by default
 - Keep documentation very lean and precise. No walls of text in this project!
 
+# Resources
+
+- pi source code available at ../../earendil-works/pi
 
 ## Agent skills
 

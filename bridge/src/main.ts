@@ -1,20 +1,14 @@
-import {
-  createAgentSessionFromServices,
-  createAgentSessionRuntime,
-  createAgentSessionServices,
-  getAgentDir,
-  SessionManager,
-  type CreateAgentSessionRuntimeFactory,
-} from "@earendil-works/pi-coding-agent";
-import { PiGateway } from "./piGateway.js";
+import { defaultSocketPath } from "./link.js";
+import { listenForShares } from "./linkGateway.js";
 import { startBridge } from "./server.js";
 
 /**
- * Bridge executable. Runs one real pi session in the directory it was started
- * from (discovered resources, stored settings and credentials, as the pi CLI
- * would) and serves it over the Bridge Protocol.
+ * Bridge executable. Serves every pi session shared over the Share Link (see
+ * `shareExtension.ts`) to the app over the Bridge Protocol. Usually started by
+ * the first pi that finds none running.
  *
  * Env: `PI_BRIDGE_TOKEN` (required bearer token), `PI_BRIDGE_PORT` (default 8787),
+ * `PI_BRIDGE_SOCKET` (default ~/.pi/agent/bridge.sock),
  * `PI_BRIDGE_NTFY_TOPIC` (unguessable topic; settled runs are announced only when set),
  * `PI_BRIDGE_NTFY_URL` (default https://ntfy.sh).
  */
@@ -30,41 +24,25 @@ const ntfy = ntfyTopic && {
   topic: ntfyTopic,
 };
 
-// `npm start -w bridge` runs us inside bridge/; INIT_CWD is where npm was invoked.
-const cwd = process.env.INIT_CWD ?? process.cwd();
-const createRuntime: CreateAgentSessionRuntimeFactory = async ({
-  cwd,
-  sessionManager,
-  sessionStartEvent,
-}) => {
-  const services = await createAgentSessionServices({ cwd });
-  return {
-    ...(await createAgentSessionFromServices({
-      services,
-      sessionManager,
-      sessionStartEvent,
-    })),
-    services,
-    diagnostics: services.diagnostics,
-  };
-};
-const runtime = await createAgentSessionRuntime(createRuntime, {
-  cwd,
-  agentDir: getAgentDir(),
-  sessionManager: SessionManager.create(cwd),
-});
-const gateway = new PiGateway(runtime, cwd);
+// The port doubles as the single-instance lock: whoever binds it owns the socket.
 const bridge = await startBridge({
   token,
   port: Number(process.env.PI_BRIDGE_PORT ?? 8787),
-  gateway,
   ntfy: ntfy || undefined,
+}).catch((e: NodeJS.ErrnoException) => {
+  if (e.code !== "EADDRINUSE") throw e;
+  console.log("pi bridge already running");
+  process.exit(0);
 });
-console.log(`pi bridge listening on ${bridge.host}:${bridge.port}`);
+const socketPath = defaultSocketPath();
+const shares = await listenForShares(socketPath, bridge.hub);
+console.log(
+  `pi bridge listening on ${bridge.host}:${bridge.port}, sharing via ${socketPath}`
+);
 
 const shutdown = async () => {
+  await shares.close();
   await bridge.close();
-  await gateway.dispose();
   process.exit(0);
 };
 process.on("SIGINT", shutdown);

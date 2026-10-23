@@ -1,5 +1,5 @@
 /** Bridge Protocol version negotiated on connect. See docs/protocol.md. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 /** `error` payload shared by `result` records and top-level `error` records. */
 export interface ProtocolError {

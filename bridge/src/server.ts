@@ -11,9 +11,8 @@ import {
   type Command,
   type ProtocolError,
 } from "./protocol.js";
-import type { SessionGateway } from "./gateway.js";
 import { NtfyNotifier, type NtfyConfig } from "./ntfy.js";
-import { CommandError, Session } from "./session.js";
+import { CommandError, SessionHub, type Session } from "./session.js";
 
 export interface BridgeOptions {
   /** Bearer token every request and WebSocket upgrade must present. */
@@ -22,10 +21,8 @@ export interface BridgeOptions {
   port: number;
   /** WebSocket ping interval after handshake. Defaults to 30 s (Cloudflare idle limit is ~100 s). */
   pingIntervalMs?: number;
-  /** Events kept for replay on reconnect; older cursors get a snapshot. Defaults to 1000. */
+  /** Events kept per session for replay on rejoin; older cursors get a snapshot. Defaults to 1000. */
   replayLimit?: number;
-  /** The agent session this bridge exposes. */
-  gateway: SessionGateway;
   /** When set, every settled run is announced on this ntfy topic. */
   ntfy?: NtfyConfig;
 }
@@ -33,6 +30,8 @@ export interface BridgeOptions {
 export interface Bridge {
   readonly host: string;
   readonly port: number;
+  /** The shared pi sessions the bridge serves; pi links register here. */
+  readonly hub: SessionHub;
   close(): Promise<void>;
 }
 
@@ -53,19 +52,8 @@ const CLOSE_INTERNAL_ERROR = 1011;
  * the socket.
  */
 export async function startBridge(options: BridgeOptions): Promise<Bridge> {
-  const {
-    token,
-    port,
-    pingIntervalMs = 30_000,
-    gateway,
-    replayLimit,
-    ntfy,
-  } = options;
-  const session = new Session(
-    gateway,
-    replayLimit,
-    ntfy && new NtfyNotifier(ntfy)
-  );
+  const { token, port, pingIntervalMs = 30_000, replayLimit, ntfy } = options;
+  const hub = new SessionHub(replayLimit, ntfy && new NtfyNotifier(ntfy));
   const expected = Buffer.from(`Bearer ${token}`);
   const isAuthorized = (req: IncomingMessage): boolean => {
     const given = Buffer.from(req.headers.authorization ?? "");
@@ -84,35 +72,52 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) =>
-      serve(ws, pingIntervalMs, session, ntfy)
+      serve(ws, pingIntervalMs, hub, ntfy)
     );
   });
 
-  await new Promise<void>((resolve) => http.listen(port, HOST, resolve));
+  await new Promise<void>((resolve, reject) => {
+    http.once("error", reject);
+    http.listen(port, HOST, resolve);
+  });
   const address = http.address() as AddressInfo;
 
   return {
     host: HOST,
     port: address.port,
+    hub,
     async close() {
       for (const ws of wss.clients) ws.terminate();
       wss.close();
-      session.close();
+      hub.close();
       await new Promise<void>((resolve) => http.close(() => resolve()));
     },
   };
 }
 
-/** Drives one authenticated connection: handshake first, then commands. */
+/**
+ * Drives one authenticated connection: handshake first, then commands. The
+ * connection is joined to at most one session, which its events and
+ * session commands concern.
+ */
 function serve(
   ws: WebSocket,
   pingIntervalMs: number,
-  session: Session,
+  hub: SessionHub,
   ntfy: NtfyConfig | undefined
 ): void {
   let pinger: NodeJS.Timeout | undefined;
-  let unsubscribe: (() => void) | undefined;
   let handshaken = false;
+  let joined: { session: Session; leave: () => void } | undefined;
+  const leave = () => {
+    joined?.leave();
+    joined = undefined;
+  };
+  /** The joined session, for commands that need one. */
+  const joinedSession = (): Session => {
+    if (!joined) throw new CommandError("notJoined", "join a session first");
+    return joined.session;
+  };
 
   const send = (record: BridgeRecord) => ws.send(encode(record));
   const reject = (record: BridgeRecord) => {
@@ -156,51 +161,60 @@ function serve(
           break;
         }
         await respond(async () => {
-          await session.prompt(text, mode);
+          await joinedSession().prompt(text, mode);
           return {};
         });
         break;
       }
       case "abort":
         await respond(async () => {
-          await session.abort();
+          await joinedSession().abort();
           return {};
         });
-        break;
-      case "clearQueue":
-        await respond(async () => session.clearQueue());
         break;
       case "getSessions":
-        await respond(() => session.sessions());
+        await respond(async () => ({
+          sessions: hub.list(),
+          ...(joined && { joinedId: joined.session.id }),
+        }));
         break;
-      case "newSession":
-        await respond(async () => {
-          await session.newSession();
-          return {};
-        });
-        break;
-      case "switchSession": {
-        const { id: sessionId } = params;
+      case "joinSession": {
+        const { id: sessionId, lastSeq, epoch } = params;
         if (typeof sessionId !== "string") {
           reply({
             error: {
               code: "invalidParams",
-              message: "switchSession requires string id",
+              message: "joinSession requires string id",
             },
           });
           break;
         }
-        await respond(async () => {
-          await session.switchSession(sessionId);
-          return {};
+        const session = hub.find(sessionId);
+        if (!session) {
+          reply({
+            error: {
+              code: "unknownSession",
+              message: `no live session with id "${sessionId}"`,
+            },
+          });
+          break;
+        }
+        leave();
+        reply({ result: { epoch: session.epoch } });
+        // A missing or invalid cursor means "nothing seen": a snapshot is always safe.
+        const cursor = Number.isInteger(lastSeq) ? (lastSeq as number) : 0;
+        const unsubscribe = session.subscribe(cursor, epoch, (event) => {
+          send({ type: "event", ...event });
+          if (event.name === "sessionEnded") joined = undefined;
         });
+        joined = { session, leave: unsubscribe };
         break;
       }
       case "getStats":
-        await respond(async () => session.stats());
+        await respond(() => joinedSession().stats());
         break;
       case "listSkills":
-        await respond(async () => ({ skills: session.skills() }));
+        await respond(async () => ({ skills: await joinedSession().skills() }));
         break;
       case "searchFiles": {
         const { query, limit = DEFAULT_FILE_LIMIT } = params;
@@ -220,7 +234,7 @@ function serve(
           break;
         }
         await respond(async () => ({
-          files: await session.searchFiles(
+          files: await joinedSession().searchFiles(
             query,
             Math.min(limit, MAX_FILE_LIMIT)
           ),
@@ -277,20 +291,10 @@ function serve(
       id,
       result: {
         protocolVersion: PROTOCOL_VERSION,
-        epoch: session.epoch,
         ...(ntfy && { ntfy }),
       },
     });
     pinger = setInterval(() => ws.ping(), pingIntervalMs);
-    // A missing or invalid cursor, or one from another bridge run, means
-    // "nothing seen": a full snapshot is always safe.
-    const lastSeq =
-      params.epoch === session.epoch && Number.isInteger(params.lastSeq)
-        ? (params.lastSeq as number)
-        : 0;
-    unsubscribe = session.subscribe(lastSeq, (event) =>
-      send({ type: "event", ...event })
-    );
     return true;
   };
 
@@ -316,7 +320,7 @@ function serve(
   });
   ws.on("close", () => {
     clearInterval(pinger);
-    unsubscribe?.();
+    leave();
   });
 }
 

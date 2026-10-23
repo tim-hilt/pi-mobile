@@ -29,6 +29,12 @@ struct PiClientApp: App {
         if scenePhase == .background { return client.disconnect() }
         if let saved = store.load() { client.connect(to: saved) }
       }
+      // Nothing on show yet (first launch, or a different bridge): show the latest session.
+      .task(id: client.state == .connected && client.transcript.sessionId == nil) {
+        guard client.state == .connected, client.transcript.sessionId == nil, notifications.requestedSession == nil
+        else { return }
+        try? await client.joinMostRecent()
+      }
       .task(id: notificationTopic) {
         if let topic = notificationTopic { await notifications.listen(to: topic) }
       }

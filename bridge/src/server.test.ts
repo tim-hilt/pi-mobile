@@ -11,9 +11,10 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
+/** A bridge sharing `gateway` (`null`: no session at all). */
 async function bridge(
   pingIntervalMs?: number,
-  gateway = new FakeGateway(),
+  gateway: FakeGateway | null = new FakeGateway(),
   replayLimit?: number,
   ntfy?: { baseUrl: string; topic: string }
 ): Promise<Bridge> {
@@ -21,11 +22,11 @@ async function bridge(
     token: TOKEN,
     port: 0,
     pingIntervalMs,
-    gateway,
     replayLimit,
     ntfy,
   });
   cleanups.push(() => b.close());
+  if (gateway) b.hub.add(gateway);
   return b;
 }
 
@@ -61,17 +62,12 @@ async function connect(b: Bridge, token: string | null = TOKEN) {
   };
 }
 
-const hello = (
-  id: number,
-  protocolVersion: number,
-  lastSeq = 0,
-  epoch?: string
-) =>
+const hello = (id: number, protocolVersion: number) =>
   JSON.stringify({
     type: "command",
     id,
     name: "hello",
-    params: { protocolVersion, lastSeq, epoch },
+    params: { protocolVersion },
   }) + "\n";
 
 test("valid token and supported version are acked, then pinged", async () => {
@@ -84,7 +80,7 @@ test("valid token and supported version are acked, then pinged", async () => {
   expect(await c.next()).toEqual({
     type: "result",
     id: 1,
-    result: { protocolVersion: PROTOCOL_VERSION, epoch: expect.any(String) },
+    result: { protocolVersion: PROTOCOL_VERSION },
   });
   await pinged;
 });
@@ -99,11 +95,7 @@ test("the hello result tells the app where settle notifications are published", 
   expect(await c.next()).toEqual({
     type: "result",
     id: 1,
-    result: {
-      protocolVersion: PROTOCOL_VERSION,
-      epoch: expect.any(String),
-      ntfy,
-    },
+    result: { protocolVersion: PROTOCOL_VERSION, ntfy },
   });
 });
 
@@ -195,7 +187,6 @@ test("one frame may carry several records", async () => {
   );
 
   expect(await c.next()).toMatchObject({ id: 1, result: expect.anything() });
-  await c.next(); // transcript snapshot
   expect(await c.next()).toEqual({
     type: "result",
     id: 2,
@@ -208,35 +199,50 @@ test("binds to localhost only", async () => {
   expect(b.host).toBe("127.0.0.1");
 });
 
-/**
- * Connects fresh and completes the handshake (consuming the hello result and
- * the catch-up snapshot), leaving the connection ready for commands.
- */
-async function ready(b: Bridge) {
+const join = (
+  id: number,
+  sessionId: string,
+  lastSeq?: number,
+  epoch?: string
+) => command(id, "joinSession", { id: sessionId, lastSeq, epoch });
+
+/** Connects fresh and completes the handshake; consumes the hello result. */
+async function greeted(b: Bridge) {
   const c = await connect(b);
   c.send(hello(1, PROTOCOL_VERSION));
+  await c.next();
+  return c;
+}
+
+/**
+ * Connects, joins `sessionId` fresh and consumes the join result and its
+ * snapshot, leaving the connection ready for commands.
+ */
+async function ready(b: Bridge, sessionId = "s1") {
+  const c = await greeted(b);
+  c.send(join(2, sessionId));
   await c.next();
   await c.next();
   return c;
 }
 
-/** The epoch the bridge's cursors belong to, as a handshake reports it. */
-async function epochOf(b: Bridge): Promise<string> {
-  const c = await connect(b);
-  c.send(hello(1, PROTOCOL_VERSION));
+/** The epoch a session's cursors belong to, as joining reports it. */
+async function epochOf(b: Bridge, sessionId = "s1"): Promise<string> {
+  const c = await greeted(b);
+  c.send(join(2, sessionId));
   const { result } = (await c.next()) as { result: { epoch: string } };
   c.ws.close();
   return result.epoch;
 }
 
 /**
- * Connects with a replay cursor of this bridge run (or of `epoch`); consumes
- * the hello result only.
+ * Joins `s1` with a replay cursor of its current share (or of `epoch`);
+ * consumes the hello and join results only.
  */
 async function resume(b: Bridge, lastSeq: number, epoch?: string) {
   epoch ??= await epochOf(b);
-  const c = await connect(b);
-  c.send(hello(1, PROTOCOL_VERSION, lastSeq, epoch));
+  const c = await greeted(b);
+  c.send(join(2, "s1", lastSeq, epoch));
   await c.next();
   return c;
 }
@@ -471,6 +477,7 @@ test("a fresh connect gets a transcript snapshot at the current seq", async () =
   expect(await c.next()).toEqual(
     wire(2, "transcript", {
       sessionId: "s1",
+      cwd: "/work",
       messages: gateway.messages,
       running: false,
       steering: [],
@@ -492,6 +499,7 @@ test("a snapshot taken mid-run includes the message still streaming", async () =
   expect(await c.next()).toEqual(
     wire(4, "transcript", {
       sessionId: "s1",
+      cwd: "/work",
       messages: [
         { role: "user", text: "hi" },
         { role: "assistant", text: "Hello", thinking: "hm", streaming: true },
@@ -544,6 +552,7 @@ test("a snapshot never repeats a message that already ended", async () => {
   expect(await c.next()).toEqual(
     wire(3, "transcript", {
       sessionId: "s1",
+      cwd: "/work",
       messages: gateway.messages,
       running: true,
       elapsedMs: expect.any(Number),
@@ -661,24 +670,6 @@ test("a snapshot lists the messages still queued", async () => {
   });
 });
 
-test("clearQueue drops every queued message and returns them", async () => {
-  const gateway = new FakeGateway();
-  gateway.pending = { steering: ["left"], followUp: ["later"] };
-  const c = await ready(await bridge(undefined, gateway));
-
-  c.send(command(2, "clearQueue", {}));
-
-  expect(await c.next()).toEqual(
-    wire(1, "queue", { steering: [], followUp: [] })
-  );
-  expect(await c.next()).toEqual({
-    type: "result",
-    id: 2,
-    result: { steering: ["left"], followUp: ["later"] },
-  });
-  expect(gateway.pending).toEqual({ steering: [], followUp: [] });
-});
-
 test("a user message entering the transcript streams as an event", async () => {
   const gateway = new FakeGateway();
   const c = await ready(await bridge(undefined, gateway));
@@ -764,129 +755,6 @@ test("searchFiles clamps limit to 100 and survives a failing search", async () =
   });
 });
 
-const summary = (id: string, modifiedAt: string, name?: string) => ({
-  id,
-  ...(name && { name }),
-  preview: `first message of ${id}`,
-  modifiedAt,
-  messageCount: 4,
-});
-
-test("getSessions lists the recent sessions, newest first, and marks the current one", async () => {
-  const gateway = new FakeGateway();
-  gateway.sessionList = [
-    summary("s2", "2025-01-02T00:00:00.000Z", "Refactor"),
-    summary("s1", "2025-01-01T00:00:00.000Z"),
-  ];
-  const c = await ready(await bridge(undefined, gateway));
-
-  c.send(command(2, "getSessions", {}));
-
-  expect(await c.next()).toEqual({
-    type: "result",
-    id: 2,
-    result: { sessions: gateway.sessionList, currentId: "s1" },
-  });
-});
-
-test("getSessions returns only the 30 most recent sessions", async () => {
-  const gateway = new FakeGateway();
-  gateway.sessionList = Array.from({ length: 40 }, (_, i) =>
-    summary(`s${i}`, "2025-01-01T00:00:00.000Z")
-  );
-  const c = await ready(await bridge(undefined, gateway));
-
-  c.send(command(2, "getSessions", {}));
-
-  expect(await c.next()).toMatchObject({
-    result: { sessions: gateway.sessionList.slice(0, 30) },
-  });
-});
-
-test("newSession switches every client to an empty transcript of the new session", async () => {
-  const gateway = new FakeGateway();
-  gateway.messages = [{ role: "user", text: "old" }];
-  const c = await ready(await bridge(undefined, gateway));
-
-  c.send(command(2, "newSession", {}));
-
-  expect(await c.next()).toEqual(
-    wire(1, "transcript", {
-      sessionId: "new-1",
-      messages: [],
-      running: false,
-      steering: [],
-      followUp: [],
-    })
-  );
-  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
-});
-
-test("switchSession shows the target session's transcript and restarts the replay cursor", async () => {
-  const gateway = new FakeGateway();
-  gateway.sessionList = [
-    summary("s1", "2025-01-02T00:00:00.000Z"),
-    summary("s2", "2025-01-01T00:00:00.000Z"),
-  ];
-  gateway.histories.s2 = [{ role: "user", text: "from s2" }];
-  const b = await bridge(undefined, gateway);
-  gateway.emit({ name: "runStarted" });
-  gateway.emit({ name: "runSettled", stopReason: "success" });
-  const c = await resume(b, 0);
-  await c.next(); // snapshot of s1 at seq 2
-
-  c.send(command(2, "switchSession", { id: "s2" }));
-
-  expect(await c.next()).toEqual(
-    wire(3, "transcript", {
-      sessionId: "s2",
-      messages: [{ role: "user", text: "from s2" }],
-      running: false,
-      steering: [],
-      followUp: [],
-    })
-  );
-  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
-
-  // A client that last saw s1 must not replay across the switch.
-  const stale = await resume(b, 2);
-  expect(await stale.next()).toMatchObject({
-    seq: 3,
-    name: "transcript",
-    data: { sessionId: "s2" },
-  });
-  // A client that saw the switch resumes live.
-  const current = await resume(b, 3);
-  gateway.emit({ name: "userMessage", text: "next" });
-  expect(await current.next()).toMatchObject({ seq: 4, name: "userMessage" });
-});
-
-test("switching sessions is refused for an unknown id, bad params, or an active run", async () => {
-  const gateway = new FakeGateway();
-  gateway.sessionList = [summary("s1", "2025-01-01T00:00:00.000Z")];
-  const c = await ready(await bridge(undefined, gateway));
-
-  c.send(command(2, "switchSession", { id: "nope" }));
-  expect(await c.next()).toMatchObject({
-    id: 2,
-    error: { code: "unknownSession" },
-  });
-
-  c.send(command(3, "switchSession", {}));
-  expect(await c.next()).toMatchObject({
-    id: 3,
-    error: { code: "invalidParams" },
-  });
-
-  gateway.emit({ name: "runStarted" });
-  await c.next();
-  c.send(command(4, "switchSession", { id: "s1" }));
-  expect(await c.next()).toMatchObject({ id: 4, error: { code: "runActive" } });
-  c.send(command(5, "newSession", {}));
-  expect(await c.next()).toMatchObject({ id: 5, error: { code: "runActive" } });
-  expect(gateway.sessionSwitches).toEqual([]);
-});
-
 test("getStats reports the session's counts and the runs measured by the bridge", async () => {
   const gateway = new FakeGateway();
   gateway.statistics = {
@@ -919,7 +787,7 @@ test("getStats reports the session's counts and the runs measured by the bridge"
   });
 });
 
-test("run stats restart with each session", async () => {
+test("run stats restart when pi replaces the session", async () => {
   const gateway = new FakeGateway();
   const c = await ready(await bridge(undefined, gateway));
   gateway.emit({ name: "runStarted" });
@@ -927,8 +795,7 @@ test("run stats restart with each session", async () => {
   await c.next();
   await c.next();
 
-  c.send(command(2, "newSession", {}));
-  await c.next();
+  gateway.replace("s2");
   await c.next();
   c.send(command(3, "getStats", {}));
 
@@ -936,4 +803,186 @@ test("run stats restart with each session", async () => {
     id: 3,
     result: { runs: 0, runDurationMs: 0 },
   });
+});
+
+test("getSessions lists the live sessions, most recently active first, and which one is joined", async () => {
+  const b = await bridge(undefined, null);
+  const older = new FakeGateway("s1", { name: "Refactor", cwd: "/a" });
+  const newer = new FakeGateway("s2", { cwd: "/b" });
+  b.hub.add(older);
+  b.hub.add(newer);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  newer.emit({ name: "runStarted" });
+  const c = await greeted(b);
+
+  c.send(command(2, "getSessions", {}));
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    result: {
+      sessions: [
+        {
+          id: "s2",
+          cwd: "/b",
+          preview: "hello from s2",
+          running: true,
+          activeAt: expect.any(String),
+        },
+        {
+          id: "s1",
+          name: "Refactor",
+          cwd: "/a",
+          preview: "hello from s1",
+          running: false,
+          activeAt: expect.any(String),
+        },
+      ],
+    },
+  });
+
+  c.send(join(3, "s1"));
+  await c.next();
+  await c.next();
+  c.send(command(4, "getSessions", {}));
+  expect(await c.next()).toMatchObject({ id: 4, result: { joinedId: "s1" } });
+});
+
+test("joining a session answers with its epoch, then sends its snapshot", async () => {
+  const b = await bridge();
+  const c = await greeted(b);
+
+  c.send(join(2, "s1"));
+
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    result: { epoch: expect.any(String) },
+  });
+  expect(await c.next()).toMatchObject({
+    name: "transcript",
+    data: { sessionId: "s1" },
+  });
+});
+
+test("joining is refused for an unknown id or bad params", async () => {
+  const c = await greeted(await bridge());
+
+  c.send(join(2, "nope"));
+  expect(await c.next()).toMatchObject({
+    id: 2,
+    error: { code: "unknownSession" },
+  });
+
+  c.send(command(3, "joinSession", {}));
+  expect(await c.next()).toMatchObject({
+    id: 3,
+    error: { code: "invalidParams" },
+  });
+});
+
+test.each([
+  ["prompt", { text: "hi" }],
+  ["abort", {}],
+  ["getStats", {}],
+  ["listSkills", {}],
+  ["searchFiles", { query: "a" }],
+])("%s before joining a session is refused", async (name, params) => {
+  const c = await greeted(await bridge());
+
+  c.send(command(2, name, params));
+
+  expect(await c.next()).toMatchObject({
+    id: 2,
+    error: { code: "notJoined" },
+  });
+});
+
+test("joining another session moves the connection over to it", async () => {
+  const b = await bridge();
+  const other = new FakeGateway("s2");
+  b.hub.add(other);
+  const c = await ready(b);
+
+  c.send(join(3, "s2"));
+  await c.next();
+  expect(await c.next()).toMatchObject({
+    name: "transcript",
+    data: { sessionId: "s2" },
+  });
+  c.send(command(4, "prompt", { text: "hi" }));
+  await c.next();
+
+  expect(other.prompts).toEqual(["hi"]);
+});
+
+test("each session has its own event sequence and epoch", async () => {
+  const b = await bridge();
+  const other = new FakeGateway("s2");
+  b.hub.add(other);
+  const c = await ready(b, "s2");
+
+  other.emit({ name: "runStarted" });
+
+  expect(await c.next()).toEqual(wire(1, "runStarted", {}));
+  expect(await epochOf(b, "s1")).not.toBe(await epochOf(b, "s2"));
+});
+
+test("a session pi stops sharing tells its clients it ended and leaves them unjoined", async () => {
+  const b = await bridge();
+  const c = await ready(b);
+
+  b.hub.remove(b.hub.find("s1")!);
+
+  expect(await c.next()).toEqual(wire(1, "sessionEnded", { sessionId: "s1" }));
+  c.send(command(2, "abort", {}));
+  expect(await c.next()).toMatchObject({ error: { code: "notJoined" } });
+  c.send(command(3, "getSessions", {}));
+  expect(await c.next()).toMatchObject({ result: { sessions: [] } });
+});
+
+test("when pi replaces its session, joined clients get the new one's snapshot and the replay cursor restarts", async () => {
+  const gateway = new FakeGateway();
+  const b = await bridge(undefined, gateway);
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+  const c = await resume(b, 0);
+  await c.next(); // snapshot of s1 at seq 2
+
+  gateway.replace("s2", [{ role: "user", text: "from s2" }]);
+
+  expect(await c.next()).toEqual(
+    wire(3, "transcript", {
+      sessionId: "s2",
+      cwd: "/work",
+      messages: [{ role: "user", text: "from s2" }],
+      running: false,
+      steering: [],
+      followUp: [],
+    })
+  );
+  // The share now goes by the new id; a cursor from before the switch gets a snapshot.
+  const epoch = await epochOf(b, "s2");
+  const stale = await greeted(b);
+  stale.send(join(2, "s2", 2, epoch));
+  await stale.next();
+  expect(await stale.next()).toMatchObject({ seq: 3, name: "transcript" });
+});
+
+test("events arriving while a snapshot is fetched are covered by it, not sent before it", async () => {
+  const gateway = new FakeGateway();
+  const b = await bridge(undefined, gateway);
+  let release!: () => void;
+  const fetched = new Promise<void>((resolve) => (release = resolve));
+  const history = gateway.history;
+  gateway.history = (onHistory) => void fetched.then(() => history(onHistory));
+  const c = await greeted(b);
+
+  c.send(join(2, "s1"));
+  await c.next();
+  gateway.emit({ name: "userMessage", text: "hi" });
+  release();
+
+  expect(await c.next()).toMatchObject({ seq: 1, name: "transcript" });
+  gateway.emit({ name: "runStarted" });
+  expect(await c.next()).toMatchObject({ seq: 2, name: "runStarted" });
 });

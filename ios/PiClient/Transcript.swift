@@ -5,9 +5,9 @@ import Foundation
 /// `entries` is the timeline: messages, the tool calls each turn made, and how each run ended.
 /// Streamed `delta`s grow a provisional assistant message; its `messageEnd` replaces it with the
 /// authoritative text, and a `transcript` snapshot replaces everything (snapshots carry no past
-/// runs or tool durations, so those only appear for what was seen live or replayed). Switching
-/// session arrives as such a snapshot, which also moves the cursor to the new session's `seq`.
-/// `epoch` and `lastSeq` form the replay cursor to present on the next (re)connect.
+/// runs or tool durations, so those only appear for what was seen live or replayed). Joining a
+/// session, or pi switching it, arrives as such a snapshot, which also moves the cursor to the
+/// new session's `seq`. `epoch` and `lastSeq` form the replay cursor to present on rejoining.
 struct Transcript: Equatable, Sendable {
   struct Message: Equatable, Identifiable, Sendable {
     enum Role: Sendable { case user, assistant }
@@ -83,9 +83,13 @@ struct Transcript: Equatable, Sendable {
   private(set) var queue = Queue()
   /// The session shown, as of the latest snapshot; nil before the first.
   private(set) var sessionId: String?
+  /// The working directory of the session shown.
+  private(set) var cwd: String?
+  /// Pi stopped sharing the session shown: it is no longer live and can't be driven.
+  private(set) var hasEnded = false
   /// `seq` of the newest event applied; 0 before any.
   private(set) var lastSeq = 0
-  /// The bridge run `lastSeq` counts in, from the latest `hello` result; nil before the first.
+  /// The share `lastSeq` counts in, from the latest `joinSession` result; nil before the first.
   private(set) var epoch: String?
 
   private var nextId = 0
@@ -96,7 +100,7 @@ struct Transcript: Equatable, Sendable {
   var toolCalls: [ToolCall] { entries.compactMap { if case .toolCall(let c) = $0 { c } else { nil } } }
   var runs: [Run] { entries.compactMap { if case .run(let r) = $0 { r } else { nil } } }
 
-  /// Applies one record received at `now`: events, and the `epoch` of a `hello` result; anything
+  /// Applies one record received at `now`: events, and the `epoch` of a `joinSession` result; anything
   /// else is ignored. Events at or below `lastSeq` (already seen, e.g. replayed twice) are skipped,
   /// except snapshots, which are authoritative and may legitimately carry a lower `seq` after a
   /// bridge restart.
@@ -110,6 +114,8 @@ struct Transcript: Equatable, Sendable {
     switch name {
     case "transcript":
       sessionId = data?.sessionId
+      cwd = data?.cwd
+      hasEnded = false
       replaceAll(with: data?.messages ?? [], runningFor: data?.running == true ? data?.elapsedMs ?? 0 : nil, now: now)
       queue = Queue(data)
     case "runStarted": runStartedAt = now
@@ -119,8 +125,16 @@ struct Transcript: Equatable, Sendable {
     case "messageEnd": finishMessage(text: data?.text ?? "", thinking: data?.thinking ?? "")
     case "toolCall": if let data { applyToolCall(data) }
     case "runSettled": settleRun(data)
+    case "sessionEnded": markEnded()
     default: break
     }
+  }
+
+  /// The session shown is gone (pi quit, or it ended while we were away).
+  mutating func markEnded() {
+    hasEnded = true
+    runStartedAt = nil
+    if let index = streamingIndex { editMessage(at: index) { $0.isStreaming = false } }
   }
 
   /// `runningFor` is how long the active run has been going, nil if idle.

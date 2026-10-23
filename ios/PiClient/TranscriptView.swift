@@ -12,10 +12,10 @@ struct TranscriptView: View {
         conversation
         ComposerView(client: client)
       }
-      .navigationTitle("Transcript")
+      .navigationTitle(client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Transcript")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
-        Button("Sessions", systemImage: "clock.arrow.circlepath") { showingSessions = true }
+        Button("Sessions", systemImage: "list.bullet") { showingSessions = true }
           .disabled(client.state != .connected)
       }
       .sheet(isPresented: $showingSessions) { SessionsView(client: client) }
@@ -24,10 +24,18 @@ struct TranscriptView: View {
 
   @ViewBuilder private var conversation: some View {
     let transcript = client.transcript
-    if transcript.entries.isEmpty && !transcript.isRunning {
-      ContentUnavailableView(
-        client.state == .connected ? "No messages yet" : "Not connected",
-        systemImage: "text.bubble")
+    if client.state != .connected && transcript.sessionId == nil {
+      ContentUnavailableView("Not connected", systemImage: "network.slash")
+    } else if transcript.sessionId == nil {
+      ContentUnavailableView {
+        Label("No session joined", systemImage: "terminal")
+      } description: {
+        Text("Start pi on your Mac, then pick its session.")
+      } actions: {
+        Button("Sessions") { showingSessions = true }
+      }
+    } else if transcript.entries.isEmpty && !transcript.isRunning && !transcript.hasEnded {
+      ContentUnavailableView("No messages yet", systemImage: "text.bubble")
     } else {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 12) {
@@ -39,6 +47,9 @@ struct TranscriptView: View {
             }
           }
           if let startedAt = transcript.runStartedAt { RunningView(startedAt: startedAt) }
+          if transcript.hasEnded {
+            Label("Session ended in pi", systemImage: "power").font(.footnote).foregroundStyle(.secondary)
+          }
         }
         .padding()
       }

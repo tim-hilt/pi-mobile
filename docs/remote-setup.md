@@ -37,12 +37,13 @@ EOF
 chmod 600 ~/.pi-bridge.env
 ```
 
-`PI_BRIDGE_TOKEN` is the auth secret the app needs; drop `PI_BRIDGE_NTFY_TOPIC` to disable notifications. Start the bridge from the project pi should work in (`PI_BRIDGE_PORT`, default 8787, must match the tunnel's service port):
+`PI_BRIDGE_TOKEN` is the auth secret the app needs; drop `PI_BRIDGE_NTFY_TOPIC` to disable notifications. `PI_BRIDGE_PORT` (default 8787) must match the tunnel's service port. Export them to every pi (e.g. in `~/.zshrc`), so the first pi can start the bridge:
 
 ```sh
 set -a; . ~/.pi-bridge.env; set +a
-npm start --prefix <this repo> -w bridge
 ```
+
+Then enable session sharing as in the [README](../README.md#share-pi-sessions).
 
 Self-hosted ntfy: also set `PI_BRIDGE_NTFY_URL`. The app learns the topic from the bridge handshake; nothing to configure on the phone.
 

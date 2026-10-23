@@ -2,6 +2,6 @@ import Testing
 
 @testable import PiClient
 
-@Test func appSpeaksProtocolVersion1() {
-  #expect(BridgeProtocol.version == 1)
+@Test func appSpeaksProtocolVersion2() {
+  #expect(BridgeProtocol.version == 2)
 }

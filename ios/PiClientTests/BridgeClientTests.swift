@@ -3,7 +3,7 @@ import Testing
 
 @testable import PiClient
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":1}}"# + "\n"
+private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":2}}"# + "\n"
 
 /// Waits until `client.state` satisfies `predicate`, failing the test after 5 s.
 @MainActor
@@ -35,8 +35,7 @@ private func waitFor(
     let hello = try #require(received.value)
     #expect(hello.hasSuffix("\n"))
     #expect(hello.contains(#""name":"hello""#))
-    #expect(hello.contains(#""protocolVersion":1"#))
-    #expect(hello.contains(#""lastSeq":0"#))
+    #expect(hello.contains(#""protocolVersion":2"#))
     client.disconnect()
     #expect(client.state == .offline)
   }

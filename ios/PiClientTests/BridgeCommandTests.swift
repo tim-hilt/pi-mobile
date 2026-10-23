@@ -3,7 +3,7 @@ import Testing
 
 @testable import PiClient
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":1}}"# + "\n"
+private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":2}}"# + "\n"
 
 private func result(_ id: Int, _ payload: String = "{}") -> String {
   #"{"type":"result","id":\#(id),"result":\#(payload)}"# + "\n"
@@ -71,23 +71,11 @@ private func event(_ seq: Int, _ name: String, _ data: String) -> String {
     #expect(received.value?.first?.contains(#""name":"abort""#) == true)
   }
 
-  @Test func clearingTheQueueReturnsTheDroppedTexts() async throws {
-    let (client, bridge, received) = try await connected { _, peer in
-      peer.send(result(2, #"{"steering":["left"],"followUp":["later"]}"#))
-    }
-    defer { bridge.stop() }
-
-    let dropped = try await client.clearQueue()
-
-    #expect(dropped == Transcript.Queue(steering: ["left"], followUp: ["later"]))
-    #expect(received.value?.first?.contains(#""name":"clearQueue""#) == true)
-  }
-
   @Test func resultsAreMatchedToTheirCommandsEvenWhenTheyArriveOutOfOrder() async throws {
     let (client, bridge, _) = try await connected { frame, peer in
       // Answer the second command first.
       if frame.contains(#""id":3"#) {
-        peer.send(result(3, #"{"steering":["second"],"followUp":[]}"#))
+        peer.send(result(3, #"{"skills":[{"name":"tdd","description":"d"}]}"#))
         peer.send(result(2))
       }
     }
@@ -95,9 +83,9 @@ private func event(_ seq: Int, _ name: String, _ data: String) -> String {
 
     async let first: Void = client.send("one")
     try await Task.sleep(for: .milliseconds(50))
-    async let second = client.clearQueue()
+    async let second = client.skills()
 
-    #expect(try await second == Transcript.Queue(steering: ["second"], followUp: []))
+    #expect(try await second.map(\.name) == ["tdd"])
     try await first
   }
 
@@ -193,64 +181,59 @@ extension BridgeCommandTests {
 // MARK: Sessions
 
 extension BridgeCommandTests {
-  @Test func listingSessionsReturnsTheRecentOnesAndWhichIsCurrent() async throws {
+  @Test func listingSessionsReturnsTheLiveOnesAndWhichIsJoined() async throws {
     let (client, bridge, received) = try await connected { _, peer in
       peer.send(
         result(
           2,
-          #"{"sessions":[{"id":"s2","name":"Refactor","preview":"first","modifiedAt":"2025-01-02T03:04:05.000Z","messageCount":4},{"id":"s1","preview":"older","modifiedAt":"2025-01-01T00:00:00.000Z","messageCount":2}],"currentId":"s1"}"#
+          #"{"sessions":[{"id":"s2","name":"Refactor","cwd":"/work/a","preview":"first","running":true,"activeAt":"2025-01-02T03:04:05.000Z"},{"id":"s1","cwd":"/work/b","preview":"","running":false,"activeAt":"2025-01-01T00:00:00.000Z"}],"joinedId":"s1"}"#
         ))
     }
     defer { bridge.stop() }
 
     let list = try await client.sessions()
 
-    #expect(list.currentId == "s1")
+    #expect(list.joinedId == "s1")
     #expect(list.sessions.map(\.id) == ["s2", "s1"])
-    #expect(list.sessions.map(\.title) == ["Refactor", "older"])
-    #expect(list.sessions[0].modifiedAt == Date(timeIntervalSince1970: 1_735_787_045))
+    #expect(list.sessions.map(\.title) == ["Refactor", "New session"])
+    #expect(list.sessions.map(\.cwd) == ["/work/a", "/work/b"])
+    #expect(list.sessions.map(\.running) == [true, false])
+    #expect(list.sessions[0].activeAt == Date(timeIntervalSince1970: 1_735_787_045))
     #expect(received.value?.first?.contains(#""name":"getSessions""#) == true)
   }
 
-  @Test func startingANewSessionAsksTheBridge() async throws {
-    let (client, bridge, received) = try await connected { _, peer in peer.send(result(2)) }
+  @Test func joiningTheMostRecentSessionPicksTheFirstListed() async throws {
+    let (client, bridge, received) = try await connected { frame, peer in
+      if frame.contains("getSessions") {
+        peer.send(
+          result(
+            2,
+            #"{"sessions":[{"id":"s2","cwd":"/a","preview":"","running":false,"activeAt":"2025-01-02T03:04:05.000Z"}]}"#))
+      } else {
+        peer.send(result(3, #"{"epoch":"e"}"#))
+      }
+    }
     defer { bridge.stop() }
 
-    try await client.newSession()
+    try await client.joinMostRecent()
 
-    #expect(received.value?.first?.contains(#""name":"newSession""#) == true)
+    #expect(received.value?.last?.contains(#""name":"joinSession""#) == true)
+    #expect(received.value?.last?.contains(#""id":"s2""#) == true)
   }
 
-  @Test func switchingSessionsNamesTheTargetAndASwitchSnapshotShowsItsTranscript() async throws {
-    let (client, bridge, received) = try await connected(
-      onConnect: event(
-        3, "transcript", #"{"sessionId":"s1","running":false,"messages":[{"role":"user","text":"old"}]}"#)
+  @Test func rejoiningASessionTheBridgeNoLongerHasMarksItEnded() async throws {
+    let (client, bridge, _) = try await connected(
+      onConnect: event(1, "transcript", #"{"sessionId":"s1","running":false,"messages":[]}"#)
     ) { _, peer in
-      peer.send(
-        event(4, "transcript", #"{"sessionId":"s2","running":false,"messages":[{"role":"user","text":"new"}]}"#)
-          + result(2))
+      peer.send(#"{"type":"result","id":2,"error":{"code":"unknownSession","message":"gone"}}"# + "\n")
     }
     defer { bridge.stop() }
+    for _ in 0..<500 where client.transcript.sessionId == nil { try await Task.sleep(for: .milliseconds(10)) }
 
-    try await client.switchSession(id: "s2")
-
-    let frame = try #require(received.value?.first)
-    #expect(frame.contains(#""name":"switchSession""#))
-    #expect(frame.contains(#""id":"s2""#))
-    for _ in 0..<500 where client.transcript.lastSeq < 4 { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(client.transcript.sessionId == "s2")
-    #expect(client.transcript.messages.map(\.text) == ["new"])
-  }
-
-  @Test func theBridgeRefusingASwitchThrowsItsError() async throws {
-    let (client, bridge, _) = try await connected { _, peer in
-      peer.send(#"{"type":"result","id":2,"error":{"code":"runActive","message":"abort first"}}"# + "\n")
+    await #expect(throws: ProtocolError(code: "unknownSession", message: "gone")) {
+      try await client.join(sessionId: "s1")
     }
-    defer { bridge.stop() }
-
-    await #expect(throws: ProtocolError(code: "runActive", message: "abort first")) {
-      try await client.newSession()
-    }
+    #expect(client.transcript.hasEnded)
   }
 
   @Test func statsReturnTheSessionsCountsAndRunTiming() async throws {

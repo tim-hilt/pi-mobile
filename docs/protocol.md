@@ -2,7 +2,9 @@
 
 Source of truth for the contract between `bridge/` and `ios/`. Both sides test against it.
 
-**Version: 1**
+**Version: 2**
+
+The bridge serves every pi session running on the Mac (see [Share Link](#share-link)). A connection lists them and _joins_ one at a time; events and session commands concern the joined session.
 
 ## Transport
 
@@ -32,23 +34,23 @@ A record that is not valid JSON or not a well-formed `command` → `error` recor
 
 ## Event ordering and replay
 
-- `seq` increases by 1 per event, across the bridge's lifetime. It restarts with the bridge process, so it is only meaningful together with the `epoch` (opaque string) of the `hello` result that preceded it.
-- On connect the app sends its last-seen `seq` (`lastSeq`, `0` if none) and the `epoch` it came from. A missing or invalid `lastSeq`, or an `epoch` other than the bridge's current one, counts as `0`. Right after the `hello` result the bridge sends the catch-up, then streams live without gaps:
+- Each session counts its own events: `seq` increases by 1 per event of that session. It restarts whenever pi starts sharing the session anew, so it is only meaningful together with the `epoch` (opaque string) of the `joinSession` result that preceded it.
+- `joinSession` carries the app's last-seen `lastSeq` of that session (`0` or absent if none) and the `epoch` it came from. A missing or invalid `lastSeq`, or an `epoch` other than the session's current one, counts as `0`. Right after the `joinSession` result the bridge sends the catch-up, then streams live without gaps:
   - `lastSeq` ≥ 1 and the bridge still retains every event after it (last 1000 by default) → exactly the events with `seq > lastSeq`.
-  - Otherwise — fresh client or restarted bridge (`0`), or cursor too old → one `transcript` snapshot instead.
-- The app adopts a `transcript` event as authoritative: it replaces everything it held and its `seq` becomes the new cursor. A catch-up snapshot does not consume a `seq`; it carries the `seq` of the latest event it reflects. A session switch (see `newSession`) sends a live `transcript` that does take a fresh `seq` and empties the replay log, so a cursor from before the switch always gets a snapshot.
+  - Otherwise → one `transcript` snapshot instead.
+- The app adopts a `transcript` event as authoritative: it replaces everything it held and its `seq` becomes the new cursor. A catch-up snapshot does not consume a `seq`; it carries the `seq` of the latest event it reflects. When pi replaces the session (`/new`, `/resume`, `/fork`), joined clients follow: they get a live `transcript` of the new session (new `sessionId`) that does take a fresh `seq`, and the replay log is emptied, so a cursor from before the switch always gets a snapshot.
 
 ## Versioning
 
-- First record after connect: app sends `hello` (`command`, `params: { protocolVersion, lastSeq, epoch? }`).
-- Bridge answers `result` with `{ protocolVersion, epoch, ntfy? }` on success (`ntfy` as in [Notifications](#notifications)), or `error.code = "versionMismatch"` and closes the socket.
+- First record after connect: app sends `hello` (`command`, `params: { protocolVersion }`).
+- Bridge answers `result` with `{ protocolVersion, ntfy? }` on success (`ntfy` as in [Notifications](#notifications)), or `error.code = "versionMismatch"` and closes the socket.
 - Breaking changes bump the integer version; additive fields do not.
 
 ## Notifications
 
 When the bridge is configured with an ntfy topic, it POSTs to `<baseUrl>/<topic>` for every `runSettled`, whatever the `stopReason`, whether or not an app is connected. The body is JSON: `{ sessionId, sessionName?, stopReason, durationMs }` — never transcript content, since the topic is public by obscurity. `sessionName` is the user-given name, absent if none. Delivery failures are logged and otherwise ignored.
 
-The `hello` result carries `ntfy: { baseUrl, topic }` so the app learns the topic from the bridge. While active, the app subscribes to `<baseUrl>/<topic>/ws`, raises a local notification per message (`sessionId` in its `userInfo`), and a tap opens that session (`switchSession`, unless already current).
+The `hello` result carries `ntfy: { baseUrl, topic }` so the app learns the topic from the bridge. While active, the app subscribes to `<baseUrl>/<topic>/ws`, raises a local notification per message (`sessionId` in its `userInfo`), and a tap opens that session (`joinSession`, unless already joined).
 
 Bridge config (env): `PI_BRIDGE_NTFY_TOPIC` (enables it), `PI_BRIDGE_NTFY_URL` (default `https://ntfy.sh`).
 
@@ -58,35 +60,31 @@ After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloud
 
 ## Commands
 
-`hello`, `prompt`, `abort`, `clearQueue`, `getSessions`, `newSession`, `switchSession`, `getStats`, `listSkills`, `searchFiles`.
-
-### `prompt`
-
-Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once the bridge has accepted the text.
-
-- Idle session: starts a run; `mode` is ignored.
-- Run active: `steer` delivers after the current assistant turn and its tool calls; `followUp` delivers after the run finishes its pending work. No `mode` → `error.code = "runActive"`.
-- Bad params → `error.code = "invalidParams"`. The session refusing the prompt → `error.code = "sessionError"` (connection stays usable).
-
-### `abort`
-
-Params `{}`. Result `{}`. Stops the active run, which then settles with `stopReason: "aborted"`; a no-op when idle. Queued messages stay queued. Failure → `error.code = "sessionError"`.
-
-### `clearQueue`
-
-Params `{}`. Result `{ steering: string[], followUp: string[] }` — the queued texts that were dropped, so the app can hand them back to the user. A `queue` event follows.
+`hello`, `getSessions`, `joinSession`, `prompt`, `abort`, `getStats`, `listSkills`, `searchFiles`. All but the first three concern the joined session; sent before joining → `error.code = "notJoined"`.
 
 ### `getSessions`
 
-Params `{}`. Result `{ sessions, currentId }` — the 30 most recently modified stored sessions, newest first, as `{ id, name?, preview, modifiedAt, messageCount }` (`name` is the user-given name; `preview` the first user message; `modifiedAt` ISO 8601). `currentId` is the session now driven; it is absent from `sessions` while it is still empty (pi stores a session with its first message).
+Params `{}`. Result `{ sessions, joinedId? }` — every live session, most recently active first, as `{ id, name?, cwd, preview, running, activeAt }` (`name` user-given; `preview` the first user message, `""` if none; `activeAt` ISO 8601 of the latest event). `joinedId` is the session this connection is joined to.
 
-### `newSession` / `switchSession`
+### `joinSession`
 
-`newSession` params `{}`; `switchSession` params `{ id: string }` (an `id` from `getSessions`; switching to the current session is a no-op). Result `{}`. On success every connected client receives a `transcript` event for the new session (a fresh `seq`, see above) before the result. Both are refused while a run is active (`runActive`; abort first). `switchSession` with an unknown `id` → `unknownSession`; bad params → `invalidParams`; pi refusing the change → `sessionError`.
+Params `{ id: string, lastSeq?: integer, epoch?: string }`. Result `{ epoch }`, then the catch-up (see [Event ordering and replay](#event-ordering-and-replay)). Replaces any previous join. Unknown `id` → `unknownSession`; bad params → `invalidParams`.
+
+### `prompt`
+
+Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once pi has the text.
+
+- Idle session: starts a run; `mode` is ignored.
+- Run active: `steer` delivers after the current assistant turn and its tool calls; `followUp` delivers after the run finishes its pending work. No `mode` → `error.code = "runActive"`.
+- Bad params → `error.code = "invalidParams"`. Pi failing → `error.code = "sessionError"` (connection stays usable).
+
+### `abort`
+
+Params `{}`. Result `{}`. Stops the active run, which then settles with `stopReason: "aborted"`; a no-op when idle. Failure → `error.code = "sessionError"`.
 
 ### `getStats`
 
-Params `{}`. Result for the current session: `{ userMessages, assistantMessages, toolCalls, tokens, cost, runs, runDurationMs }`. The first five come from pi and cover the whole session (`tokens` is the total, `cost` its price). `runs` and `runDurationMs` (total) count the runs the bridge has seen settle since the session became current; they restart on every session switch.
+Params `{}`. Result for the current session: `{ userMessages, assistantMessages, toolCalls, tokens, cost, runs, runDurationMs }`. The first five come from pi and cover the whole session (`tokens` is the total, `cost` its price). `runs` and `runDurationMs` (total) count the runs the bridge has seen settle since it started sharing the session.
 
 ### `listSkills`
 
@@ -100,20 +98,22 @@ Params `{ query: string, limit?: integer }` (`limit` default 20, capped at 100).
 
 Run events, in the order a run emits them:
 
-| `name`        | `data`                                                                                                                              |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `runStarted`  | `{}`                                                                                                                                |
-| `userMessage` | `{ text }` — a user message entered the conversation: the prompt itself, or a steer/follow-up pi took in                            |
-| `queue`       | `{ steering: string[], followUp: string[] }` — the messages queued but not yet taken in, oldest first; always the full new contents |
-| `delta`       | `{ kind: "text" \| "thinking", text }` — an increment to append                                                                     |
-| `messageEnd`  | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                                     |
-| `runSettled`  | `{ stopReason: "success" \| "error" \| "aborted" \| "length", durationMs, errorMessage? }` — pi will not continue on its own        |
+| `name`        | `data`                                                                                                                                                                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runStarted`  | `{}`                                                                                                                                                                                                 |
+| `userMessage` | `{ text }` — a user message entered the conversation: the prompt itself, or a steer/follow-up pi took in                                                                                             |
+| `queue`       | `{ steering: string[], followUp: string[] }` — the messages queued from the app but not yet taken in, oldest first; always the full new contents. Pi does not expose what was queued in its terminal |
+| `delta`       | `{ kind: "text" \| "thinking", text }` — an increment to append                                                                                                                                      |
+| `messageEnd`  | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                                                                                                      |
+| `runSettled`  | `{ stopReason: "success" \| "error" \| "aborted" \| "length", durationMs, errorMessage? }` — pi will not continue on its own                                                                         |
 
 `durationMs` is measured by the bridge from `runStarted` to `runSettled`. `runStarted` is sent as soon as pi accepts a prompt. `stopReason` is `error` (with `errorMessage`) when the run's final assistant message failed, `aborted` when it was aborted, `length` when it ended because the model hit its output limit, else `success`; failures a retry recovered from do not count.
 
+`sessionEnded` `{ sessionId }` — pi quit: the session is gone and the connection is no longer joined. It is the last event of the session.
+
 ### `transcript`
 
-`{ sessionId, messages, running, steering, followUp }` — `sessionId` is the session shown; the whole conversation, oldest first. `messages` entries are `{ role: "user", text }`, `{ role: "assistant", text, thinking }` (completed messages; a turn with neither is omitted) or `{ role: "toolCall", toolCallId, toolName, args, output?, isError? }` after the assistant turn that made the call (`output`/`isError` as in `toolCall` `end`, absent until the tool finished; later `toolCall` events with that `toolCallId` update it). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event. Past runs' outcomes and tool durations are not part of a snapshot.
+`{ sessionId, cwd, messages, running, steering, followUp }` — `sessionId` is the session shown, `cwd` its working directory; the whole conversation, oldest first. `messages` entries are `{ role: "user", text }`, `{ role: "assistant", text, thinking }` (completed messages; a turn with neither is omitted) or `{ role: "toolCall", toolCallId, toolName, args, output?, isError? }` after the assistant turn that made the call (`output`/`isError` as in `toolCall` `end`, absent until the tool finished; later `toolCall` events with that `toolCallId` update it). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event. Past runs' outcomes and tool durations are not part of a snapshot.
 
 ### `toolCall`
 
@@ -124,3 +124,7 @@ One event per phase of a tool execution; all carry `toolCallId` and `toolName`. 
 | `start`  | `args`                                                            |
 | `update` | `output` — output so far (replaces earlier updates)               |
 | `end`    | `output`, `isError`, `durationMs?` (absent if the tool never ran) |
+
+## Share Link
+
+How pi processes share their sessions with the bridge; internal to the Mac, not part of the app contract. The `bridge/src/shareExtension.ts` pi extension connects every interactive pi process to the unix socket `~/.pi/agent/bridge.sock` (`PI_BRIDGE_SOCKET`; mode `0600`, no auth) and exchanges NDJSON records (`bridge/src/link.ts`): pi sends `announce` (on connect and when it replaces its session), `info`, `event` and `reply`; the bridge sends `call`. If no bridge answers and `PI_BRIDGE_TOKEN` is set, the extension starts `bridge/dist/main.js` detached; it outlives that pi. The TCP port is the single-instance lock.

@@ -45,8 +45,9 @@ async function fakeNtfy(status = 200) {
 
 async function bridgeNotifying(ntfy: { baseUrl: string; topic: string }) {
   const gateway = new FakeGateway();
-  const b = await startBridge({ token: "t", port: 0, gateway, ntfy });
+  const b = await startBridge({ token: "t", port: 0, ntfy });
   cleanups.push(() => b.close());
+  b.hub.add(gateway);
   return gateway;
 }
 
@@ -78,8 +79,7 @@ test("the payload carries only the session, stop reason and duration", async () 
     baseUrl: ntfy.baseUrl,
     topic: "t",
   });
-  gateway.current = "s7";
-  gateway.name = "refactor auth";
+  gateway.current = { ...gateway.current, id: "s7", name: "refactor auth" };
   gateway.emit({ name: "runStarted" });
   gateway.emit({ name: "userMessage", text: "my secret prompt" });
   gateway.emit({ name: "messageEnd", text: "secret answer", thinking: "" });

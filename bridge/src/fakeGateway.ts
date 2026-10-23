@@ -3,7 +3,8 @@ import type {
   GatewayStats,
   QueuedMessages,
   SessionGateway,
-  SessionSummary,
+  SessionHistory,
+  SharedSessionInfo,
   SkillInfo,
   TranscriptMessage,
 } from "./gateway.js";
@@ -13,7 +14,7 @@ export class FakeGateway implements SessionGateway {
   readonly prompts: string[] = [];
   readonly steers: string[] = [];
   readonly followUps: string[] = [];
-  /** What `transcript()` reports; tests set it to the history they want snapshotted. */
+  /** What `history()` reports; tests set it to the history they want snapshotted. */
   messages: TranscriptMessage[] = [];
   /** What `skills()` reports. */
   skillList: SkillInfo[] = [];
@@ -21,12 +22,6 @@ export class FakeGateway implements SessionGateway {
   files: string[] = [];
   /** The `(query, limit)` of every `searchFiles` call. */
   readonly searches: Array<[string, number]> = [];
-  /** What `sessions()` reports; tests set it to the stored sessions they want listed. */
-  sessionList: SessionSummary[] = [];
-  /** Transcripts of stored sessions by id; a switch loads one into `messages`. */
-  readonly histories: Record<string, TranscriptMessage[]> = {};
-  /** Ids passed to `switchSession`, in call order. */
-  readonly sessionSwitches: string[] = [];
   /** What `stats()` reports. */
   statistics: GatewayStats = {
     userMessages: 0,
@@ -36,17 +31,18 @@ export class FakeGateway implements SessionGateway {
     cost: 0,
   };
   aborts = 0;
-  /** What `sessionId()` reports. */
-  current = "s1";
-  /** What `sessionName()` reports. */
-  name: string | undefined;
-  private created = 0;
-  /** What `queue()` reports; tests set it to the pending messages they want snapshotted. */
+  /** What `info()` reports. */
+  current: SharedSessionInfo;
+  /** What `history()` reports as queued. */
   pending: QueuedMessages = { steering: [], followUp: [] };
-  /** When set, the next call to `prompt`, `steer`, `followUp` or `abort` rejects with it. */
+  /** When set, the next call to `prompt`, `steer`, `followUp`, `abort` or `searchFiles` rejects with it. */
   failNextWith: Error | undefined;
 
   private listeners = new Set<(event: GatewayEvent) => void>();
+
+  constructor(id = "s1", extra: Partial<SharedSessionInfo> = {}) {
+    this.current = { id, cwd: "/work", preview: `hello from ${id}`, ...extra };
+  }
 
   prompt = (text: string) => this.accept(this.prompts, text);
   steer = (text: string) => this.accept(this.steers, text);
@@ -57,19 +53,10 @@ export class FakeGateway implements SessionGateway {
     this.aborts++;
   };
 
-  queue = () => this.pending;
+  history = (onHistory: (history: SessionHistory | undefined) => void) =>
+    onHistory({ messages: this.messages, ...this.pending });
 
-  /** Like pi, announces the now-empty queue. */
-  clearQueue = () => {
-    const cleared = this.pending;
-    this.pending = { steering: [], followUp: [] };
-    this.emit({ name: "queue", ...this.pending });
-    return cleared;
-  };
-
-  transcript = () => this.messages;
-
-  skills = () => this.skillList;
+  skills = async () => this.skillList;
 
   searchFiles = async (query: string, limit: number) => {
     this.throwIfFailing();
@@ -77,36 +64,16 @@ export class FakeGateway implements SessionGateway {
     return this.files.filter((f) => f.includes(query)).slice(0, limit);
   };
 
-  sessionId = () => this.current;
+  info = () => this.current;
 
-  sessionName = () => this.name;
+  stats = async () => this.statistics;
 
-  sessions = async () => this.sessionList;
-
-  /** Like pi, starts an empty session (listed first) and announces the change. */
-  newSession = async () => {
-    this.current = `new-${++this.created}`;
-    this.messages = [];
-    this.sessionList = [
-      {
-        id: this.current,
-        preview: "",
-        modifiedAt: new Date(0).toISOString(),
-        messageCount: 0,
-      },
-      ...this.sessionList,
-    ];
+  /** Like pi replacing its session (`/new`, `/resume`): becomes `id` with `messages`. */
+  replace(id: string, messages: TranscriptMessage[] = []): void {
+    this.current = { ...this.current, id, preview: "" };
+    this.messages = messages;
     this.emit({ name: "sessionChanged" });
-  };
-
-  switchSession = async (id: string) => {
-    this.sessionSwitches.push(id);
-    this.current = id;
-    this.messages = this.histories[id] ?? [];
-    this.emit({ name: "sessionChanged" });
-  };
-
-  stats = () => this.statistics;
+  }
 
   subscribe(listener: (event: GatewayEvent) => void): () => void {
     this.listeners.add(listener);
