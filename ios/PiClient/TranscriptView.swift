@@ -5,6 +5,7 @@ struct TranscriptView: View {
   let client: BridgeClient
 
   @State private var showingSessions = false
+  @State private var showingModels = false
 
   var body: some View {
     NavigationStack {
@@ -12,7 +13,8 @@ struct TranscriptView: View {
         conversation
         ComposerView(client: client)
         if client.transcript.sessionId != nil {
-          StatusBar(cwd: client.transcript.cwd, status: client.transcript.status)
+          StatusBar(cwd: client.transcript.cwd, status: client.transcript.status) { showingModels = true }
+            .disabled(client.state != .connected || client.transcript.hasEnded)
         }
       }
       .navigationTitle(client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Transcript")
@@ -22,6 +24,7 @@ struct TranscriptView: View {
           .disabled(client.state != .connected)
       }
       .sheet(isPresented: $showingSessions) { SessionsView(client: client) }
+      .sheet(isPresented: $showingModels) { ModelsView(client: client) }
     }
   }
 
@@ -117,15 +120,21 @@ private struct ToolCallView: View {
 }
 
 /// One line like pi's footer: directory on the left; model, context fill and price on the right.
+/// Tapping the model calls `pickModel`.
 private struct StatusBar: View {
   let cwd: String?
   let status: Transcript.Status
+  let pickModel: () -> Void
 
   var body: some View {
     HStack(spacing: 8) {
       if let cwd { Text(Self.abbreviatingHome(cwd)).truncationMode(.head) }
       Spacer(minLength: 0)
-      Text(details).layoutPriority(1)
+      Group {
+        Button(status.model ?? "No model", action: pickModel).buttonStyle(.borderless)
+        Text("· \(details)")
+      }
+      .layoutPriority(1)
     }
     .font(.caption.monospacedDigit())
     .foregroundStyle(.secondary)
@@ -136,7 +145,7 @@ private struct StatusBar: View {
   }
 
   private var details: String {
-    [status.model, status.contextUsage, status.cost.formatted(.currency(code: "USD"))]
+    [status.contextUsage, status.cost.formatted(.currency(code: "USD"))]
       .compactMap { $0 }
       .joined(separator: " · ")
   }

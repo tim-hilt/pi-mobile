@@ -3,7 +3,7 @@ import type {
   SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
 import { expect, test } from "vitest";
-import type { GatewayEvent } from "./gateway.js";
+import type { GatewayEvent, ModelInfo } from "./gateway.js";
 import type { ShareRecord } from "./link.js";
 import { PiShare, type PiEvent, type PiHost } from "./piShare.js";
 
@@ -22,6 +22,12 @@ class FakeHost implements PiHost {
   commandList: Array<Partial<SlashCommandInfo>> = [];
   modelId: string | undefined;
   context: { tokens: number | null; contextWindow: number } | undefined;
+  /** Pi's models carry much more than the share passes on. */
+  modelList: Array<ModelInfo & Record<string, unknown>> = [];
+  /** `[provider, id]` of every model pi switched to. */
+  readonly selected: Array<[string, string]> = [];
+  /** When set, `setModel` rejects with it. */
+  refuseModel: Error | undefined;
 
   send = (text: string, deliverAs?: "steer" | "followUp") => {
     this.sent.push([text, deliverAs]);
@@ -41,6 +47,11 @@ class FakeHost implements PiHost {
   commands = () => this.commandList as SlashCommandInfo[];
   model = () => this.modelId;
   contextUsage = () => this.context;
+  models = () => this.modelList;
+  setModel = async (provider: string, id: string) => {
+    if (this.refuseModel) throw this.refuseModel;
+    this.selected.push([provider, id]);
+  };
 }
 
 function setup() {
@@ -493,4 +504,34 @@ test("the status is sent when a turn, run, model switch, compaction or tree move
       cost: 0,
     },
   ]);
+});
+
+test("models are those pi offers to switch to, by provider, id and name", () => {
+  const { host, share } = setup();
+  host.modelList = [
+    { provider: "anthropic", id: "opus", name: "Claude Opus", extra: 1 },
+  ];
+
+  expect(share.call({ method: "models" })).toEqual([
+    { provider: "anthropic", id: "opus", name: "Claude Opus" },
+  ]);
+});
+
+test("setting the model asks pi to switch, and fails when pi can't", async () => {
+  const { host, share } = setup();
+
+  await share.call({
+    method: "setModel",
+    provider: "anthropic",
+    modelId: "opus",
+  });
+  host.refuseModel = new Error("no API key for anthropic");
+  const refused = share.call({
+    method: "setModel",
+    provider: "anthropic",
+    modelId: "sonnet",
+  });
+
+  await expect(refused).rejects.toThrow("no API key for anthropic");
+  expect(host.selected).toEqual([["anthropic", "opus"]]);
 });

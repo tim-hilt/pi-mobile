@@ -45,6 +45,8 @@ function pi(id: string, cwd = "/work") {
     commands: () => [],
     model: () => undefined,
     contextUsage: () => undefined,
+    models: () => [],
+    setModel: async () => {},
   };
   return { host, sent };
 }
@@ -195,4 +197,25 @@ test("a snapshot covers exactly the events pi sent before its history, even when
     { seq: 0, name: "transcript", data: { messages: [] } },
     { seq: 1, name: "userMessage", data: { text: "later" } },
   ]);
+});
+
+test("a call pi answers asynchronously resolves once pi is done", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const hub = await listening(path);
+  const { host } = pi("s1");
+  let finish: (() => void) | undefined;
+  host.setModel = () => new Promise<void>((resolve) => (finish = resolve));
+  share(client(path), host);
+  const session = await eventually(() => hub.find("s1"));
+  let done = false;
+
+  const switched = session.setModel("anthropic", "opus").then(() => {
+    done = true;
+  });
+  await eventually(() => finish);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(done).toBe(false);
+  finish!();
+
+  await switched;
 });

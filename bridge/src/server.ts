@@ -216,6 +216,26 @@ function serve(
       case "listSkills":
         await respond(async () => ({ skills: await joinedSession().skills() }));
         break;
+      case "listModels":
+        await respond(async () => ({ models: await joinedSession().models() }));
+        break;
+      case "setModel": {
+        const { provider, id: modelId } = params;
+        if (typeof provider !== "string" || typeof modelId !== "string") {
+          reply({
+            error: {
+              code: "invalidParams",
+              message: "setModel requires string provider and id",
+            },
+          });
+          break;
+        }
+        await respond(async () => {
+          await joinedSession().setModel(provider, modelId);
+          return {};
+        });
+        break;
+      }
       case "searchFiles": {
         const { query, limit = DEFAULT_FILE_LIMIT } = params;
         if (

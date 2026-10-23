@@ -44,6 +44,14 @@ struct Skill: Decodable, Equatable, Identifiable, Sendable {
   var id: String { name }
 }
 
+/// A model the session can switch to. `id` is unique only within its `provider`.
+struct ModelInfo: Decodable, Equatable, Hashable, Sendable {
+  let provider: String
+  let id: String
+  /// Human-readable name.
+  let name: String
+}
+
 /// A pi session running on the Mac, as listed for joining.
 struct LiveSession: Decodable, Equatable, Identifiable, Sendable {
   let id: String
@@ -136,6 +144,8 @@ struct Record: Decodable, Sendable {
     let ntfy: NtfyTopic?
     /// `listSkills`.
     let skills: [Skill]?
+    /// `listModels`.
+    let models: [ModelInfo]?
     /// `searchFiles`: paths relative to the session's working directory, best first.
     let files: [String]?
     /// `getSessions`.
@@ -146,12 +156,13 @@ struct Record: Decodable, Sendable {
 
     init(
       protocolVersion: Int? = nil, epoch: String? = nil, ntfy: NtfyTopic? = nil, skills: [Skill]? = nil,
-      files: [String]? = nil, sessions: [LiveSession]? = nil, joinedId: String? = nil, stats: SessionStats? = nil
+      models: [ModelInfo]? = nil, files: [String]? = nil, sessions: [LiveSession]? = nil, joinedId: String? = nil, stats: SessionStats? = nil
     ) {
       self.protocolVersion = protocolVersion
       self.epoch = epoch
       self.ntfy = ntfy
       self.skills = skills
+      self.models = models
       self.files = files
       self.sessions = sessions
       self.joinedId = joinedId
@@ -263,7 +274,7 @@ enum JSONValue: Codable, Equatable, Sendable {
 
 extension Record.CommandResult: Decodable {
   private enum CodingKeys: String, CodingKey {
-    case protocolVersion, epoch, ntfy, skills, files, sessions, joinedId
+    case protocolVersion, epoch, ntfy, skills, models, files, sessions, joinedId
   }
 
   init(from decoder: Decoder) throws {
@@ -273,6 +284,7 @@ extension Record.CommandResult: Decodable {
       epoch: try values.decodeIfPresent(String.self, forKey: .epoch),
       ntfy: try values.decodeIfPresent(NtfyTopic.self, forKey: .ntfy),
       skills: try values.decodeIfPresent([Skill].self, forKey: .skills),
+      models: try values.decodeIfPresent([ModelInfo].self, forKey: .models),
       files: try values.decodeIfPresent([String].self, forKey: .files),
       sessions: try values.decodeIfPresent([LiveSession].self, forKey: .sessions),
       joinedId: try values.decodeIfPresent(String.self, forKey: .joinedId),

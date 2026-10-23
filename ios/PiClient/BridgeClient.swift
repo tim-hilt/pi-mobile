@@ -36,8 +36,8 @@ enum PromptMode: String, Sendable {
 /// the session on show from the transcript's replay cursor; only a refusal by the bridge
 /// (`failed`) or `disconnect` ends the attempts.
 ///
-/// Commands (`send`, `abort`, `skills`, `searchFiles`, `sessions`, `join`, `joinMostRecent`,
-/// `stats`, `show`) are async: they return once the bridge has answered
+/// Commands (`send`, `abort`, `skills`, `models`, `setModel`, `searchFiles`, `sessions`, `join`,
+/// `joinMostRecent`, `stats`, `show`) are async: they return once the bridge has answered
 /// and throw its `ProtocolError`, or `CommandError` if the connection is not usable. Their effects
 /// show up in `transcript` through the events the bridge streams, never through the return value.
 @MainActor @Observable
@@ -100,6 +100,16 @@ final class BridgeClient {
   /// The session's skills, invoked by sending `/skill:<name>`.
   func skills() async throws -> [Skill] {
     try await command("listSkills").skills ?? []
+  }
+
+  /// The models the session can switch to; the active one is `transcript.status.model`.
+  func models() async throws -> [ModelInfo] {
+    try await command("listModels").models ?? []
+  }
+
+  /// Switches the session to `model`; `transcript.status` follows once pi has.
+  func setModel(_ model: ModelInfo) async throws {
+    _ = try await command("setModel", ["provider": .string(model.provider), "id": .string(model.id)])
   }
 
   /// Workspace files matching `query` (prefix or fuzzy), best first, as paths relative to the

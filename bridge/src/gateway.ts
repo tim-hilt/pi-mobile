@@ -26,6 +26,13 @@ export interface SessionGateway {
   history(onHistory: (history: SessionHistory | undefined) => void): void;
   /** The skills the session can invoke as `/skill:<name>`. */
   skills(): Promise<SkillInfo[]>;
+  /** The models the session can switch to, as pi's `/model` offers them. */
+  models(): Promise<ModelInfo[]>;
+  /**
+   * Makes `provider`'s model `id` the session's model; the change then shows
+   * as a `status` event. Rejects if pi can't (unknown model, no credentials).
+   */
+  setModel(provider: string, id: string): Promise<void>;
   /**
    * Workspace files matching `query` (prefix or fuzzy, best first), at most
    * `limit`, as paths relative to the session's working directory.
@@ -71,6 +78,14 @@ export interface SessionStatus {
 export interface SkillInfo {
   name: string;
   description: string;
+}
+
+/** A model the session can switch to. `id` is unique only within its `provider`. */
+export interface ModelInfo {
+  provider: string;
+  id: string;
+  /** Human-readable name. */
+  name: string;
 }
 
 /** What the session has consumed so far; `tokens` and `cost` cover the whole session. */

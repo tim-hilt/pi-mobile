@@ -60,7 +60,7 @@ After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloud
 
 ## Commands
 
-`hello`, `getSessions`, `joinSession`, `prompt`, `abort`, `getStats`, `listSkills`, `searchFiles`. All but the first three concern the joined session; sent before joining → `error.code = "notJoined"`.
+`hello`, `getSessions`, `joinSession`, `prompt`, `abort`, `getStats`, `listSkills`, `searchFiles`, `listModels`, `setModel`. All but the first three concern the joined session; sent before joining → `error.code = "notJoined"`.
 
 ### `getSessions`
 
@@ -93,6 +93,14 @@ Params `{}`. Result `{ skills: { name, description }[] }` — the session's skil
 ### `searchFiles`
 
 Params `{ query: string, limit?: integer }` (`limit` default 20, capped at 100). Result `{ files: string[] }` — paths relative to the session's working directory, `/`-separated, best first. Matching is case-insensitive: file-name prefix, path prefix, substring, then subsequence; ties go to the shorter path; empty `query` matches all. Inside a git repository, ignored files are excluded. Bad params → `error.code = "invalidParams"`.
+
+### `listModels`
+
+Params `{}`. Result `{ models: { provider, id, name }[] }` — the models pi's `/model` offers: the session's scoped models if configured, else every model with credentials. `id` is unique only within `provider`; the active one is `status.model`.
+
+### `setModel`
+
+Params `{ provider: string, id: string }`. Result `{}` once pi switched; a `status` event follows. Unknown model or no credentials → `sessionError`; bad params → `invalidParams`.
 
 ## Events
 

@@ -4,6 +4,7 @@ import type { Socket } from "node:net";
 import type {
   GatewayEvent,
   GatewayStats,
+  ModelInfo,
   SessionHistory,
   SharedSessionInfo,
   SkillInfo,
@@ -34,7 +35,8 @@ export type CallRecord = { type: "call"; id: number } & Call;
 
 export type Call =
   | { method: "prompt" | "steer" | "followUp"; text: string }
-  | { method: "abort" | "history" | "skills" | "stats" };
+  | { method: "setModel"; provider: string; modelId: string }
+  | { method: "abort" | "history" | "skills" | "stats" | "models" };
 
 /** What each call resolves with. */
 export interface CallResults {
@@ -45,6 +47,8 @@ export interface CallResults {
   history: SessionHistory;
   skills: SkillInfo[];
   stats: GatewayStats;
+  models: ModelInfo[];
+  setModel: void;
 }
 
 /** Sends `record` as one line. */

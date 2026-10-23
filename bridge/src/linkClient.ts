@@ -87,22 +87,30 @@ export class LinkClient {
     });
   }
 
+  /** Replies at once, unless the share answers with a Promise: then when it settles. */
   private answer(socket: Socket, { id, type: _, ...call }: CallRecord): void {
     const share = this.share;
     if (!share) {
       write(socket, { type: "reply", id, error: "pi is switching sessions" });
       return;
     }
-    let reply: ShareRecord;
-    try {
-      reply = { type: "reply", id, result: share.call(call) };
-    } catch (e) {
-      reply = {
+    const failed = (e: unknown) =>
+      write(socket, {
         type: "reply",
         id,
         error: e instanceof Error ? e.message : String(e),
-      };
+      });
+    let result: unknown;
+    try {
+      result = share.call(call);
+    } catch (e) {
+      return void failed(e);
     }
-    write(socket, reply);
+    if (result instanceof Promise)
+      result.then(
+        (r) => write(socket, { type: "reply", id, result: r }),
+        failed
+      );
+    else write(socket, { type: "reply", id, result });
   }
 }

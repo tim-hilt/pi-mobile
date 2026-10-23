@@ -39,6 +39,9 @@ export class LinkGateway implements SessionGateway {
   abort = () => this.call({ method: "abort" });
   skills = () => this.call({ method: "skills" });
   stats = () => this.call({ method: "stats" });
+  models = () => this.call({ method: "models" });
+  setModel = (provider: string, id: string) =>
+    this.call({ method: "setModel", provider, modelId: id });
 
   history(onHistory: (history: SessionHistory | undefined) => void): void {
     // Not via `call`: resolving a Promise would run `onHistory` only after

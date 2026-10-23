@@ -2,5 +2,5 @@
 - Lists every pi session running on the Mac (any directory); join one to watch and drive it live
 - Sends notifications, when agent is finished
 - Shows reasoning traces, tool calls, answers, runtime, timeout... from pi session
-- Status bar like pi's footer: directory, model, context fill ("18.8k/1.0M"), session price
+- Status bar like pi's footer: directory, model, context fill ("18.8k/1.0M"), session price; tap the model to switch it
 - User can respond, call skills (with suggestions), reference files (with suggestions)

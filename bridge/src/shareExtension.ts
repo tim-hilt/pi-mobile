@@ -69,6 +69,16 @@ function host(pi: ExtensionAPI, ctx: ExtensionContext) {
     commands: () => pi.getCommands(),
     model: () => ctx.model?.id,
     contextUsage: () => ctx.getContextUsage(),
+    models: () =>
+      ctx.scopedModels.length > 0
+        ? ctx.scopedModels.map((scoped) => scoped.model)
+        : ctx.modelRegistry.getAvailable(),
+    setModel: async (provider: string, id: string) => {
+      const model = ctx.modelRegistry.find(provider, id);
+      if (!model) throw new Error(`unknown model ${provider}/${id}`);
+      if (!(await pi.setModel(model)))
+        throw new Error(`no credentials for ${provider}`);
+    },
   };
 }
 

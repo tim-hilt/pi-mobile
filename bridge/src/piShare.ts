@@ -6,6 +6,7 @@ import {
 import type {
   GatewayEvent,
   GatewayStats,
+  ModelInfo,
   QueuedMessages,
   SessionHistory,
   SessionStatus,
@@ -33,6 +34,10 @@ export interface PiHost {
   model(): string | undefined;
   /** `ctx.getContextUsage()`: undefined without a model; `tokens` is null while unknown. */
   contextUsage(): { tokens: number | null; contextWindow: number } | undefined;
+  /** The models pi's `/model` offers: the session's scoped models, else every one with credentials. */
+  models(): ModelInfo[];
+  /** Switches the session to `provider`'s model `id`; rejects if pi can't. */
+  setModel(provider: string, id: string): Promise<void>;
 }
 
 /**
@@ -110,6 +115,7 @@ export class PiShare {
   /**
    * Answers one bridge call. Synchronous on purpose: the reply must go out
    * before any later event, or a `history` would miss what it claims to cover.
+   * Only `setModel`, whose outcome pi decides later, answers with a Promise.
    */
   call(call: Call): unknown {
     switch (call.method) {
@@ -127,6 +133,12 @@ export class PiShare {
         return this.skills();
       case "stats":
         return this.stats();
+      case "models":
+        return this.host
+          .models()
+          .map(({ provider, id, name }) => ({ provider, id, name }));
+      case "setModel":
+        return this.host.setModel(call.provider, call.modelId);
     }
   }
 

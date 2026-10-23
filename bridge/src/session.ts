@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type {
   GatewayEvent,
   GatewayStats,
+  ModelInfo,
   SessionGateway,
   SessionHistory,
   SharedSessionInfo,
@@ -146,6 +147,14 @@ export class Session {
 
   skills(): Promise<SkillInfo[]> {
     return this.gateway.skills();
+  }
+
+  models(): Promise<ModelInfo[]> {
+    return this.gateway.models();
+  }
+
+  setModel(provider: string, id: string): Promise<void> {
+    return this.gateway.setModel(provider, id);
   }
 
   searchFiles(query: string, limit: number): Promise<string[]> {

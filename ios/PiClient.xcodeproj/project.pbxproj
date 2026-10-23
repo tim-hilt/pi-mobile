@@ -27,6 +27,7 @@
 		CD2A83C65FE1A962EEC36CF5 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = B85E68D53450A36745BE8651 /* Notifications.swift */; };
 		E337B2661ADD489288FE28E1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BD921047ECEB9467F7EA7D85 /* Assets.xcassets */; };
 		E918904CD4251598A79549B8 /* BridgeCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF01800983A9B7F9DE9EA526 /* BridgeCommandTests.swift */; };
+		F6F691179AFD4952E8C0B8FA /* ModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A0C40260892F3C60295199 /* ModelsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +56,7 @@
 		B85E68D53450A36745BE8651 /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
 		BD921047ECEB9467F7EA7D85 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBridge.swift; sourceTree = "<group>"; };
+		D4A0C40260892F3C60295199 /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
 		ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionsTests.swift; sourceTree = "<group>"; };
 		F1033CE21B96DC349C1B6D25 /* PiClientTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PiClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F40E60F44946D0A77AD57B27 /* ProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolTests.swift; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 				3EE652E751C8D2E4F10FDD50 /* ComposerView.swift */,
 				FAB0719687016E1D6C1517EE /* ConnectionStore.swift */,
 				72D79553F7A35F045451144D /* ConnectionView.swift */,
+				D4A0C40260892F3C60295199 /* ModelsView.swift */,
 				B85E68D53450A36745BE8651 /* Notifications.swift */,
 				6823103B65B8BAAE57AABB52 /* PiClientApp.swift */,
 				B1FA77CD75D691E644841093 /* SessionsView.swift */,
@@ -223,6 +226,7 @@
 				524883C2ED762EEAE3CE95C0 /* ComposerView.swift in Sources */,
 				931949D2158ED8602B7EE894 /* ConnectionStore.swift in Sources */,
 				2586A5DF06C410B3DF5269BC /* ConnectionView.swift in Sources */,
+				F6F691179AFD4952E8C0B8FA /* ModelsView.swift in Sources */,
 				CD2A83C65FE1A962EEC36CF5 /* Notifications.swift in Sources */,
 				7CB9611764B9AE46E0EA4359 /* PiClientApp.swift in Sources */,
 				4599765F05D5E9E9831A2974 /* SessionsView.swift in Sources */,

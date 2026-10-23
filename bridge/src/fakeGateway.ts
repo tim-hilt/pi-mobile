@@ -1,6 +1,7 @@
 import type {
   GatewayEvent,
   GatewayStats,
+  ModelInfo,
   QueuedMessages,
   SessionGateway,
   SessionHistory,
@@ -19,6 +20,10 @@ export class FakeGateway implements SessionGateway {
   messages: TranscriptMessage[] = [];
   /** What `skills()` reports. */
   skillList: SkillInfo[] = [];
+  /** What `models()` reports. */
+  modelList: ModelInfo[] = [];
+  /** `[provider, id]` of every `setModel` that succeeded. */
+  readonly selectedModels: Array<[string, string]> = [];
   /** Workspace files `searchFiles` draws from, filtered by simple substring match. */
   files: string[] = [];
   /** The `(query, limit)` of every `searchFiles` call. */
@@ -38,7 +43,7 @@ export class FakeGateway implements SessionGateway {
   status: SessionStatus = { cost: 0 };
   /** What `history()` reports as queued. */
   pending: QueuedMessages = { steering: [], followUp: [] };
-  /** When set, the next call to `prompt`, `steer`, `followUp`, `abort` or `searchFiles` rejects with it. */
+  /** When set, the next call to `prompt`, `steer`, `followUp`, `abort`, `setModel` or `searchFiles` rejects with it. */
   failNextWith: Error | undefined;
 
   private listeners = new Set<(event: GatewayEvent) => void>();
@@ -60,6 +65,13 @@ export class FakeGateway implements SessionGateway {
     onHistory({ messages: this.messages, ...this.pending, ...this.status });
 
   skills = async () => this.skillList;
+
+  models = async () => this.modelList;
+
+  setModel = async (provider: string, id: string) => {
+    this.throwIfFailing();
+    this.selectedModels.push([provider, id]);
+  };
 
   searchFiles = async (query: string, limit: number) => {
     this.throwIfFailing();

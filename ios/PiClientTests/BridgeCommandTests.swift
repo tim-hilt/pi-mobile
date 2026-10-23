@@ -189,6 +189,30 @@ extension BridgeCommandTests {
     #expect(received.value?.first?.contains(#""name":"listSkills""#) == true)
   }
 
+  @Test func listingModelsReturnsWhatTheSessionCanSwitchTo() async throws {
+    let (client, bridge, received) = try await connected { _, peer in
+      peer.send(result(2, #"{"models":[{"provider":"anthropic","id":"opus","name":"Claude Opus"}]}"#))
+    }
+    defer { bridge.stop() }
+
+    let models = try await client.models()
+
+    #expect(models == [ModelInfo(provider: "anthropic", id: "opus", name: "Claude Opus")])
+    #expect(received.value?.first?.contains(#""name":"listModels""#) == true)
+  }
+
+  @Test func settingTheModelNamesItsProviderAndId() async throws {
+    let (client, bridge, received) = try await connected { _, peer in peer.send(result(2)) }
+    defer { bridge.stop() }
+
+    try await client.setModel(ModelInfo(provider: "anthropic", id: "opus", name: "Claude Opus"))
+
+    let frame = try #require(received.value?.first)
+    #expect(frame.contains(#""name":"setModel""#))
+    #expect(frame.contains(#""provider":"anthropic""#))
+    #expect(frame.contains(#""id":"opus""#))
+  }
+
   @Test func searchingFilesSendsTheQueryAndReturnsTheMatches() async throws {
     let (client, bridge, received) = try await connected { _, peer in
       peer.send(result(2, #"{"files":["src/server.ts","README.md"]}"#))

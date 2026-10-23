@@ -731,6 +731,54 @@ test("listSkills returns the session's skills", async () => {
   });
 });
 
+test("listModels returns the models the session can switch to", async () => {
+  const gateway = new FakeGateway();
+  gateway.modelList = [
+    { provider: "anthropic", id: "opus", name: "Claude Opus" },
+  ];
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "listModels", {}));
+
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 2,
+    result: { models: gateway.modelList },
+  });
+});
+
+test("setModel switches the session's model; pi refusing becomes an error result", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "setModel", { provider: "anthropic", id: "opus" }));
+  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
+  gateway.failNextWith = new Error("no API key for openai");
+  c.send(command(3, "setModel", { provider: "openai", id: "gpt" }));
+
+  expect(await c.next()).toEqual({
+    type: "result",
+    id: 3,
+    error: { code: "sessionError", message: "no API key for openai" },
+  });
+  expect(gateway.selectedModels).toEqual([["anthropic", "opus"]]);
+});
+
+test.each([
+  ["missing provider", { id: "opus" }],
+  ["non-string id", { provider: "anthropic", id: 1 }],
+])("setModel with %s is invalidParams", async (_name, params) => {
+  const c = await ready(await bridge());
+
+  c.send(command(2, "setModel", params));
+
+  expect(await c.next()).toMatchObject({
+    type: "result",
+    id: 2,
+    error: { code: "invalidParams" },
+  });
+});
+
 test("searchFiles returns matching workspace paths, 20 by default", async () => {
   const gateway = new FakeGateway();
   gateway.files = Array.from({ length: 30 }, (_, i) => `src/f${i}.ts`);
@@ -921,6 +969,8 @@ test.each([
   ["getStats", {}],
   ["listSkills", {}],
   ["searchFiles", { query: "a" }],
+  ["listModels", {}],
+  ["setModel", { provider: "anthropic", id: "opus" }],
 ])("%s before joining a session is refused", async (name, params) => {
   const c = await greeted(await bridge());
 
