@@ -7,6 +7,8 @@ struct PiMobileApp: App {
   @State private var client = BridgeClient()
   @State private var notifications = SettleNotifications()
   @State private var tab = Tab.transcript
+  /// From a pairing link opened outside the app; awaits confirmation so a foreign code can't silently re-point us.
+  @State private var pendingPairing: BridgeConfig?
   @Environment(\.scenePhase) private var scenePhase
   private let store = ConnectionStore()
 
@@ -28,6 +30,20 @@ struct PiMobileApp: App {
         ConnectionView(client: client, store: store, onPair: pair)
           .tabItem { Label("Connection", systemImage: "network") }
           .tag(Tab.connection)
+      }
+      .onOpenURL { url in pendingPairing = BridgeConfig(pairingURL: url) }
+      .alert(
+        "Connect to \(pendingPairing?.url.host() ?? "bridge")?",
+        isPresented: Binding(get: { pendingPairing != nil }, set: { if !$0 { pendingPairing = nil } }),
+        presenting: pendingPairing
+      ) { config in
+        Button("Connect") {
+          pair(config)
+          tab = .connection
+        }
+        Button("Cancel", role: .cancel) {}
+      } message: { config in
+        Text("Pi Mobile will log in to \(config.url.absoluteString). Only connect to bridges you run.")
       }
       // Connect on demand: only while the app is in use; iOS would kill a background socket anyway.
       // Reconnecting to the same bridge resumes from the transcript's cursor.

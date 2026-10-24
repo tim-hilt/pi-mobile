@@ -54,6 +54,7 @@
 		197ED1855D743B63D4CAD160 /* NotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationTests.swift; sourceTree = "<group>"; };
 		264338A4F5C372A5F7B72BAB /* ComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerView.swift; sourceTree = "<group>"; };
 		26E00721209CDB79D268FAF5 /* FakeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBridge.swift; sourceTree = "<group>"; };
+		2E1F832975BDDBC97F32E65D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		42587727183BC81882C62A3F /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
 		61B9F4E0BE7F339E73BC2CAD /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
 		689ED32C61A2E6FF82830EC8 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
@@ -93,6 +94,7 @@
 				264338A4F5C372A5F7B72BAB /* ComposerView.swift */,
 				D0A859149B0A107AF2DF7094 /* ConnectionStore.swift */,
 				689ED32C61A2E6FF82830EC8 /* ConnectionView.swift */,
+				2E1F832975BDDBC97F32E65D /* Info.plist */,
 				61B9F4E0BE7F339E73BC2CAD /* Markdown.swift */,
 				BC632B4F10DE026F16A4B475 /* ModelsView.swift */,
 				785030917FC093F04EE4987E /* Notifications.swift */,
@@ -274,6 +276,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = PiMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Pi Mobile";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan the QR code shown by the bridge to log in.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -293,6 +296,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = PiMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Pi Mobile";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan the QR code shown by the bridge to log in.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

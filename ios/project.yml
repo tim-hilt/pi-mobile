@@ -13,6 +13,13 @@ targets:
     type: application
     platform: iOS
     sources: [PiMobile]
+    info:
+      path: PiMobile/Info.plist
+      properties:
+        # Opens the bridge's pairing QR code (`pimobile://connect?…`) from the Camera app.
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.timhilt.PiMobile
+            CFBundleURLSchemes: [pimobile]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.timhilt.PiMobile

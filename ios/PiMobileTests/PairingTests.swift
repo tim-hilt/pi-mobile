@@ -9,6 +9,13 @@ import Testing
     #expect(BridgeConfig(pairingURL: url) == BridgeConfig(url: URL(string: "wss://pi.example.com")!, token: "a b&c"))
   }
 
+  /// Lets the Camera app open scanned pairing codes in Pi Mobile.
+  @Test func registersPairingScheme() {
+    let types = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] ?? []
+    let schemes = types.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
+    #expect(schemes.contains("pimobile"))
+  }
+
   @Test(arguments: [
     "https://example.com",
     "pimobile://other?url=wss%3A%2F%2Fpi.example.com&token=t",
