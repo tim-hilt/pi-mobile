@@ -23,8 +23,10 @@ extension BridgeConfig {
 }
 
 enum ConnectionState: Equatable, Sendable {
-  /// Not connected: never connected, disconnected, unreachable, or dropped.
+  /// Not connected: never connected, disconnected, unreachable, or dropped. Retries (if any) run
+  /// silently in the background, without passing through `connecting`.
   case offline
+  /// The first attempt after `connect`.
   case connecting
   /// Authenticated and protocol version agreed.
   case connected
@@ -60,9 +62,11 @@ final class BridgeClient {
   private(set) var transcript = Transcript()
 
   /// Why a command could not be answered.
-  enum CommandError: Error, Equatable {
+  enum CommandError: LocalizedError, Equatable {
     /// Not `connected`, or the socket ended before the bridge answered.
     case notConnected
+
+    var errorDescription: String? { "Not connected to the bridge." }
   }
 
   @ObservationIgnored private var connection: Task<Void, Never>?
@@ -208,7 +212,6 @@ final class BridgeClient {
   private func superviseConnection(to config: BridgeConfig) async {
     var delay = reconnectDelay
     while !Task.isCancelled {
-      state = .connecting
       let outcome = await runSocket(config)
       guard !Task.isCancelled, case .dropped(let wasConnected) = outcome else { return }
       state = .offline

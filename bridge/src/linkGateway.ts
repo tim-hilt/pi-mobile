@@ -129,12 +129,16 @@ export interface ShareRegistry<Handle> {
 /**
  * Accepts Share Links on the unix socket `path`, registering each pi session
  * with `registry` on its first `announce` and removing it when the link drops.
- * Replaces a leftover socket file: the caller must already know no other
- * bridge is running.
+ * Answers `pairing` with `pairingUrl()`, so pi can show the QR code; the token
+ * in it never leaves the user's private socket. Replaces a leftover socket
+ * file: the caller must already know no other bridge is running.
  */
 export async function listenForShares<Handle>(
   path: string,
-  registry: ShareRegistry<Handle>
+  registry: ShareRegistry<Handle>,
+  {
+    pairingUrl = () => undefined,
+  }: { pairingUrl?: () => string | undefined } = {}
 ): Promise<{ close(): Promise<void> }> {
   mkdirSync(dirname(path), { recursive: true });
   rmSync(path, { force: true });
@@ -144,6 +148,18 @@ export async function listenForShares<Handle>(
     let gateway: LinkGateway | undefined;
     let handle: Handle | undefined;
     readRecords<ShareRecord>(socket, (record) => {
+      if (record.type === "pairing") {
+        const url = pairingUrl();
+        return void write(socket, {
+          type: "pairing",
+          ...(url
+            ? { url }
+            : {
+                error:
+                  "set publicUrl in ~/.pi/agent/bridge.json and restart the bridge",
+              }),
+        });
+      }
       if (gateway) return gateway.receive(record);
       if (record.type !== "announce") return;
       gateway = new LinkGateway(socket, record.info);

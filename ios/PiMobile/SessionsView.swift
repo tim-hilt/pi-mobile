@@ -1,16 +1,14 @@
 import SwiftUI
 
 /// Home screen: the pi sessions running on the Mac, most recently active first, each with an icon
-/// showing what it is up to; tapping one opens its transcript. Settings sit behind the gear.
+/// showing what it is up to; tapping one opens its transcript. Offline, it offers to scan the bridge's QR code.
 struct SessionsView: View {
   let client: BridgeClient
-  let store: ConnectionStore
   /// Called with the config from a scanned pairing QR code.
   let onPair: (BridgeConfig) -> Void
 
   @State private var sessions: [LiveSession]?
   @State private var failure: String?
-  @State private var showingSettings = false
   @State private var showingScanner = false
 
   var body: some View {
@@ -21,19 +19,6 @@ struct SessionsView: View {
           ToolbarItem(placement: .topBarLeading) { logo }.sharedBackgroundVisibility(.hidden)
         } else {
           ToolbarItem(placement: .topBarLeading) { logo }
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Settings", systemImage: "gearshape") { showingSettings = true }
-        }
-      }
-      .sheet(isPresented: $showingSettings) {
-        NavigationStack {
-          ConnectionView(client: client, store: store, onPair: onPair)
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-              ToolbarItem(placement: .confirmationAction) { Button("Done") { showingSettings = false } }
-            }
         }
       }
       .sheet(isPresented: $showingScanner) { PairingScanner(onScan: onPair) }
@@ -55,20 +40,25 @@ struct SessionsView: View {
       } actions: {
         scanButton
       }
-    } else if let sessions {
+      .padding(.bottom, raise)
+    } else if client.state == .connected, let sessions, sessions.isEmpty {
+      // Standalone like the offline state; polling picks up new sessions.
+      ContentUnavailableView {
+        Label("No pi sessions", systemImage: "terminal")
+      } description: {
+        Text(failure ?? "Start pi on your Mac to see it here.")
+      }
+      .padding(.bottom, raise)
+    } else if client.state == .connected, let sessions {
       List {
         if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
-        if sessions.isEmpty {
-          ContentUnavailableView(
-            "No pi sessions", systemImage: "terminal",
-            description: Text("Start pi on your Mac to see it here."))
-        }
         ForEach(sessions) { session in
           NavigationLink(value: session.id) { SessionRow(session: session) }
         }
       }
       .refreshable { await load() }
     } else if client.state == .offline {
+      // Reconnects run silently in the background; the list returns once one succeeds.
       ContentUnavailableView {
         Label("Not connected", systemImage: "network.slash")
       } description: {
@@ -76,10 +66,14 @@ struct SessionsView: View {
       } actions: {
         scanButton
       }
+      .padding(.bottom, raise)
     } else {
       ProgressView("Connecting…")
     }
   }
+
+  /// Lifts the empty states a little above dead center.
+  private let raise: CGFloat = 80
 
   private var logo: some View {
     Image("PiLogo").resizable().scaledToFit().frame(height: 28).accessibilityLabel("Pi")

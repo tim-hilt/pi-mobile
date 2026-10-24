@@ -8,10 +8,10 @@ export function pairingUrl(publicUrl: string, token: string): string {
   return url.toString();
 }
 
-/** The pairing QR code as terminal text. */
-export function pairingQr(publicUrl: string, token: string): string {
+/** A pairing URL as a terminal QR code. */
+export function pairingQr(url: string): string {
   let out = "";
-  qrcode.generate(pairingUrl(publicUrl, token), { small: true }, (qr) => {
+  qrcode.generate(url, { small: true }, (qr) => {
     out = qr;
   });
   return out;

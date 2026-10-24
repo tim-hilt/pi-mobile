@@ -219,3 +219,21 @@ test("a call pi answers asynchronously resolves once pi is done", async () => {
 
   await switched;
 });
+
+test("pi gets the pairing URL from the bridge, before sharing any session", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const shares = await listenForShares(path, new SessionHub(), {
+    pairingUrl: () => "pimobile://connect?token=t",
+  });
+  cleanups.push(() => shares.close());
+  expect(await client(path).pairingUrl()).toBe("pimobile://connect?token=t");
+});
+
+test("asking for the pairing URL fails without a bridge or without a public URL", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  await expect(client(path).pairingUrl(100)).rejects.toThrow(
+    "bridge is not running"
+  );
+  await listening(path);
+  await expect(client(path).pairingUrl()).rejects.toThrow("publicUrl");
+});

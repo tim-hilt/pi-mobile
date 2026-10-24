@@ -19,7 +19,7 @@ struct PiMobileApp: App {
   var body: some Scene {
     WindowGroup {
       NavigationStack(path: $path) {
-        SessionsView(client: client, store: store, onPair: pair)
+        SessionsView(client: client, onPair: pair)
           .navigationDestination(for: String.self) { TranscriptView(client: client, sessionId: $0) }
       }
       .onOpenURL { url in

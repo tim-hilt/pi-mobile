@@ -50,7 +50,7 @@ A record that is not valid JSON or not a well-formed `command` → `error` recor
 
 Not part of the protocol: the app raises none. When configured with an ntfy topic, the bridge publishes a push notification for every `runSettled`, whatever the `stopReason`, whether or not an app is connected; the user receives it with the ntfy app. It POSTs ntfy's JSON form to `<baseUrl>`: `{ topic, title, message, tags: ["robot"], markdown: true, icon, click }`. `title` is `<session name or cwd basename>: Agent Finished|Failed|Aborted|Cut Off`; `message` the run's last assistant text (≤ 1000 chars), else its error, else "The agent finished.". `click` is `pimobile://session?id=<sessionId>`: tapping the notification opens the app on that session (`joinSession` once connected, unless already joined). The topic is public by obscurity and the message carries transcript content: keep it unguessable. Delivery failures are logged and otherwise ignored.
 
-Bridge config (env): `PI_BRIDGE_NTFY_TOPIC` (enables it), `PI_BRIDGE_NTFY_URL` (default `https://ntfy.sh`).
+Bridge config (`~/.pi/agent/bridge.json`): `ntfyTopic` (enables it), `ntfyUrl` (default `https://ntfy.sh`).
 
 ## Keepalive
 
@@ -135,4 +135,4 @@ One event per phase of a tool execution; all carry `toolCallId` and `toolName`. 
 
 ## Share Link
 
-How pi processes share their sessions with the bridge; internal to the Mac, not part of the app contract. The `bridge/src/shareExtension.ts` pi extension connects every interactive pi process to the unix socket `~/.pi/agent/bridge.sock` (`PI_BRIDGE_SOCKET`; mode `0600`, no auth) and exchanges NDJSON records (`bridge/src/link.ts`): pi sends `announce` (on connect and when it replaces its session), `info`, `event` and `reply`; the bridge sends `call`. If no bridge answers and `PI_BRIDGE_TOKEN` is set, the extension starts `bridge/dist/main.js` detached; it outlives that pi. The TCP port is the single-instance lock.
+How pi processes share their sessions with the bridge; internal to the Mac, not part of the app contract. The `bridge/src/shareExtension.ts` pi extension connects every interactive pi process to the unix socket `~/.pi/agent/bridge.sock` (`PI_BRIDGE_SOCKET`; mode `0600`, no auth) and exchanges NDJSON records (`bridge/src/link.ts`): pi sends `announce` (on connect and when it replaces its session), `info`, `event` and `reply`; the bridge sends `call`. Any time, even before `announce`, pi may send `pairing`; the bridge answers `{type:"pairing", url}` (the app's pairing URL, holding the token) or `{type:"pairing", error}` without `publicUrl`. If no bridge answers, the extension starts `bridge/dist/main.js` detached; it outlives that pi. The TCP port is the single-instance lock.

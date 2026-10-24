@@ -34,9 +34,9 @@ npm run build -w bridge
 # ~/.pi/agent/settings.json: "extensions": ["<this repo>/bridge/src/shareExtension.ts"]
 ```
 
-With `PI_BRIDGE_TOKEN` in pi's environment, the first pi starts the bridge (detached, logs to `~/.pi/agent/bridge.log`; `PI_BRIDGE_PORT` defaults to 8787). To run it by hand instead: `PI_BRIDGE_TOKEN=secret npm start -w bridge`.
+The first pi starts the bridge (detached, logs to `~/.pi/agent/bridge.log`), configured in `~/.pi/agent/bridge.json` (`publicUrl`, `port` = 8787, `ntfyTopic`, `ntfyUrl`; see [remote setup](docs/remote-setup.md)). `/show-bridge-qr` in pi shows the QR code the app scans to log in. The token is random per start and never stored or logged; scan again after a restart. To run it by hand instead: `npm start -w bridge`.
 
-Notifications: set `PI_BRIDGE_NTFY_TOPIC` to an unguessable topic (and `PI_BRIDGE_NTFY_URL` if self-hosting) and subscribe to it in the ntfy iOS app to get a push notification with the last answer when a run settles.
+Notifications: set `ntfyTopic` to an unguessable topic (and `ntfyUrl` if self-hosting) and subscribe to it in the ntfy iOS app to get a push notification with the last answer when a run settles.
 
 Remote access (Cloudflare Tunnel): see [docs/remote-setup.md](docs/remote-setup.md).
 

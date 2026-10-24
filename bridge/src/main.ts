@@ -1,50 +1,44 @@
+import { randomBytes } from "node:crypto";
 import { defaultSocketPath } from "./link.js";
 import { listenForShares } from "./linkGateway.js";
-import { pairingQr } from "./pairing.js";
+import { pairingUrl } from "./pairing.js";
 import { startBridge } from "./server.js";
+import { loadSettings } from "./settings.js";
 
 /**
  * Bridge executable. Serves every pi session shared over the Share Link (see
  * `shareExtension.ts`) to the app over the Bridge Protocol. Usually started by
- * the first pi that finds none running.
+ * the first pi that finds none running; configured in `~/.pi/agent/bridge.json`
+ * (see `settings.ts`). `PI_BRIDGE_SOCKET` overrides the socket path.
  *
- * Env: `PI_BRIDGE_TOKEN` (required bearer token), `PI_BRIDGE_PORT` (default 8787),
- * `PI_BRIDGE_SOCKET` (default ~/.pi/agent/bridge.sock),
- * `PI_BRIDGE_NTFY_TOPIC` (unguessable topic; settled runs are announced only when set),
- * `PI_BRIDGE_NTFY_URL` (default https://ntfy.sh),
- * `PI_BRIDGE_PUBLIC_URL` (`wss://` address the app reaches; when set, a pairing QR code is printed).
+ * The bearer token is random per start and only kept in memory: a restart
+ * revokes every paired app. It is never printed; pi shows it as the pairing QR
+ * code on `/show-bridge-qr`.
  */
-const token = process.env.PI_BRIDGE_TOKEN;
-if (!token) {
-  console.error("PI_BRIDGE_TOKEN is required");
-  process.exit(1);
-}
-
-const ntfyTopic = process.env.PI_BRIDGE_NTFY_TOPIC;
-const ntfy = ntfyTopic && {
-  baseUrl: process.env.PI_BRIDGE_NTFY_URL ?? "https://ntfy.sh",
-  topic: ntfyTopic,
-};
+const token = randomBytes(32).toString("hex");
+const settings = loadSettings();
+const ntfy = settings.ntfyTopic
+  ? { baseUrl: settings.ntfyUrl, topic: settings.ntfyTopic }
+  : undefined;
 
 // The port doubles as the single-instance lock: whoever binds it owns the socket.
 const bridge = await startBridge({
   token,
-  port: Number(process.env.PI_BRIDGE_PORT ?? 8787),
-  ntfy: ntfy || undefined,
+  port: settings.port,
+  ntfy,
 }).catch((e: NodeJS.ErrnoException) => {
   if (e.code !== "EADDRINUSE") throw e;
   console.log("pi bridge already running");
   process.exit(0);
 });
 const socketPath = defaultSocketPath();
-const shares = await listenForShares(socketPath, bridge.hub);
+const { publicUrl } = settings;
+const shares = await listenForShares(socketPath, bridge.hub, {
+  pairingUrl: () => publicUrl && pairingUrl(publicUrl, token),
+});
 console.log(
   `pi bridge listening on ${bridge.host}:${bridge.port}, sharing via ${socketPath}`
 );
-const publicUrl = process.env.PI_BRIDGE_PUBLIC_URL;
-if (publicUrl) {
-  console.log(`Scan with Pi Mobile to log in:\n${pairingQr(publicUrl, token)}`);
-}
 
 const shutdown = async () => {
   await shares.close();

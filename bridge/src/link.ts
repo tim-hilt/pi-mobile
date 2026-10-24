@@ -28,7 +28,12 @@ export type ShareRecord =
   /** The session's name or preview changed. */
   | { type: "info"; info: SharedSessionInfo }
   | { type: "event"; event: GatewayEvent }
-  | { type: "reply"; id: number; result?: unknown; error?: string };
+  | { type: "reply"; id: number; result?: unknown; error?: string }
+  /** Asks for the app's pairing URL; allowed before `announce`. */
+  | { type: "pairing" };
+
+/** Bridge → pi: answers `pairing`, with the URL or why there is none. */
+export type PairingRecord = { type: "pairing"; url?: string; error?: string };
 
 /** Bridge → pi: a request pi answers with one `reply` of the same `id`. */
 export type CallRecord = { type: "call"; id: number } & Call;
@@ -52,8 +57,10 @@ export interface CallResults {
 }
 
 /** Sends `record` as one line. */
-export const write = (socket: Socket, record: ShareRecord | CallRecord) =>
-  socket.write(JSON.stringify(record) + "\n");
+export const write = (
+  socket: Socket,
+  record: ShareRecord | CallRecord | PairingRecord
+) => socket.write(JSON.stringify(record) + "\n");
 
 /** Calls `onRecord` for every complete line on `socket`; malformed lines are skipped. */
 export function readRecords<T>(socket: Socket, onRecord: (record: T) => void) {

@@ -17,7 +17,7 @@ struct TranscriptView: View {
   var body: some View {
     VStack(spacing: 0) {
       conversation
-      ComposerView(client: client).disabled(!isShown)
+      ComposerView(client: client).disabled(!isShown || client.state != .connected)
       if isShown {
         StatusBar(cwd: client.transcript.cwd, status: client.transcript.status) { showingModels = true }
           .disabled(!isLive)
@@ -30,7 +30,9 @@ struct TranscriptView: View {
     }
     .sheet(isPresented: $showingModels) { ModelsView(client: client) }
     .sheet(isPresented: $showingStats) { StatsView(client: client) }
-    .task(id: sessionId) {
+    // Retried on every reconnect, in case the connection dropped before the session was shown.
+    .task(id: "\(sessionId) \(client.state == .connected)") {
+      guard client.state != .offline else { return }
       do {
         try await client.show(sessionId: sessionId)
         failure = nil
@@ -40,13 +42,21 @@ struct TranscriptView: View {
     }
   }
 
+  private var lostConnection: some View {
+    ContentUnavailableView(
+      "Lost connection", systemImage: "network.slash",
+      description: Text("Reconnecting to the bridge in the background."))
+  }
+
   /// Always a scroll view, so dragging down dismisses the keyboard whatever is on show.
   private var conversation: some View {
     ScrollView {
       let transcript = client.transcript
       if !isShown {
         Group {
-          if let failure {
+          if client.state == .offline {
+            lostConnection
+          } else if let failure {
             ContentUnavailableView("Could not open the session", systemImage: "exclamationmark.triangle", description: Text(failure))
           } else {
             ProgressView()
@@ -67,6 +77,8 @@ struct TranscriptView: View {
           if let startedAt = transcript.runStartedAt { RunningView(startedAt: startedAt) }
           if transcript.hasEnded {
             Label("Session ended in pi", systemImage: "power").font(.footnote).foregroundStyle(.secondary)
+          } else if client.state == .offline {
+            Label("Lost connection", systemImage: "network.slash").font(.footnote).foregroundStyle(.secondary)
           }
         }
         .padding()

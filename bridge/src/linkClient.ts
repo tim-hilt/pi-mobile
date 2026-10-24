@@ -3,6 +3,7 @@ import {
   readRecords,
   write,
   type CallRecord,
+  type PairingRecord,
   type ShareRecord,
 } from "./link.js";
 import type { PiShare } from "./piShare.js";
@@ -26,6 +27,10 @@ export class LinkClient {
   private retryMs = FIRST_RETRY_MS;
   private retry: NodeJS.Timeout | undefined;
   private closed = false;
+  /** Waiting for the next connect. */
+  private onConnect = new Set<() => void>();
+  /** `pairing` requests in send order; the bridge answers in order. */
+  private pairings: Array<(record: PairingRecord) => void> = [];
 
   constructor(
     private path: string,
@@ -56,6 +61,31 @@ export class LinkClient {
     if (this.connected && this.socket) write(this.socket, record);
   }
 
+  /**
+   * The app's pairing URL (it holds the token). Waits up to `waitMs` for the
+   * bridge, which pi may just have started.
+   */
+  async pairingUrl(waitMs = 3_000): Promise<string> {
+    if (!this.connected) {
+      let done = () => {};
+      const connected = new Promise<void>((resolve) => (done = resolve));
+      this.onConnect.add(done);
+      const timer = setTimeout(done, waitMs);
+      await connected;
+      clearTimeout(timer);
+      this.onConnect.delete(done);
+    }
+    const socket = this.socket;
+    if (!this.connected || !socket)
+      throw new Error("the bridge is not running");
+    const record = await new Promise<PairingRecord>((resolve) => {
+      this.pairings.push(resolve);
+      write(socket, { type: "pairing" });
+    });
+    if (!record.url) throw new Error(record.error ?? "no pairing URL");
+    return record.url;
+  }
+
   /** Pi is quitting: ends the link for good, so the bridge drops the session. */
   close(): void {
     this.closed = true;
@@ -72,14 +102,21 @@ export class LinkClient {
       this.connected = true;
       this.retryMs = FIRST_RETRY_MS;
       if (this.share) this.attach(this.share);
+      for (const done of this.onConnect) done();
     });
-    readRecords<CallRecord>(socket, (call) => this.answer(socket, call));
+    readRecords<CallRecord | PairingRecord>(socket, (record) =>
+      record.type === "pairing"
+        ? this.pairings.shift()?.(record)
+        : this.answer(socket, record)
+    );
     socket.on("error", (e: NodeJS.ErrnoException) => {
       if (e.code === "ENOENT" || e.code === "ECONNREFUSED") this.startBridge();
     });
     socket.on("close", () => {
       this.connected = false;
       this.announced = undefined;
+      for (const resolve of this.pairings.splice(0))
+        resolve({ type: "pairing", error: "the bridge went away" });
       if (this.closed) return;
       this.retry = setTimeout(() => this.connect(), this.retryMs);
       this.retry.unref();

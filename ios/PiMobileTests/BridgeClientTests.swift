@@ -111,6 +111,26 @@ private func waitFor(
     await waitFor(client) { $0 == .offline }
   }
 
+  @Test func retriesStaySilentlyOffline() async throws {
+    let bridge = try await FakeBridge(token: "t") { _, _ in }
+    let url = bridge.url
+    bridge.stop()
+    try await Task.sleep(for: .milliseconds(100))
+
+    let client = BridgeClient(reconnectDelay: .milliseconds(10))
+    client.connect(to: BridgeConfig(url: url, token: "t"))
+    await waitFor(client) { $0 == .offline }
+    for _ in 0..<30 {
+      #expect(client.state == .offline)
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    client.disconnect()
+  }
+
+  @Test func notConnectedHasReadableMessage() {
+    #expect(BridgeClient.CommandError.notConnected.localizedDescription == "Not connected to the bridge.")
+  }
+
   @Test func reconnectingReplacesThePreviousConnection() async throws {
     let bridge = try await FakeBridge(token: "t") { _, peer in peer.send(ack) }
     defer { bridge.stop() }

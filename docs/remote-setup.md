@@ -27,30 +27,21 @@ Run it (`cloudflared tunnel run pi-bridge`) or install as a service (`sudo cloud
 
 ## 2. Bridge
 
-Generate the secrets once, into one file:
+Write the settings once, to `~/.pi/agent/bridge.json` (`chmod 600` it):
 
-```sh
-cat > ~/.pi-bridge.env <<EOF
-PI_BRIDGE_TOKEN=$(openssl rand -hex 32)
-PI_BRIDGE_PUBLIC_URL=wss://pi.example.com
-PI_BRIDGE_NTFY_TOPIC=$(openssl rand -hex 16)
-EOF
-chmod 600 ~/.pi-bridge.env
+```json
+{ "publicUrl": "wss://pi.example.com", "ntfyTopic": "<openssl rand -hex 16>" }
 ```
 
-`PI_BRIDGE_TOKEN` is the auth secret the app needs; `PI_BRIDGE_PUBLIC_URL` is the address it reaches the bridge at; drop `PI_BRIDGE_NTFY_TOPIC` to disable notifications. `PI_BRIDGE_PORT` (default 8787) must match the tunnel's service port. Export them to every pi (e.g. in `~/.zshrc`), so the first pi can start the bridge:
-
-```sh
-set -a; . ~/.pi-bridge.env; set +a
-```
+`publicUrl` is the address the app reaches the bridge at; drop `ntfyTopic` to disable notifications. `port` (default 8787) must match the tunnel's service port. The first pi starts the bridge with them; restart it after edits. Its auth token is fresh on every start and kept in memory only.
 
 Then enable session sharing as in the [README](../README.md#share-pi-sessions).
 
-Notifications come through the [ntfy app](https://apps.apple.com/app/ntfy/id1625396347): subscribe to `$PI_BRIDGE_NTFY_TOPIC` there. Self-hosted ntfy: also set `PI_BRIDGE_NTFY_URL` and add that server in the ntfy app.
+Notifications come through the [ntfy app](https://apps.apple.com/app/ntfy/id1625396347): subscribe to your `ntfyTopic` there. Self-hosted ntfy: also set `ntfyUrl` and add that server in the ntfy app.
 
 ## 3. App
 
-On start, the bridge prints a QR code (to `~/.pi/agent/bridge.log` when a pi started it; or run `npm start -w bridge`). Tap **Scan QR Code to Log In** in the app and scan it. The QR code contains the token: don't share it. Manual entry of `wss://pi.example.com` and the token stays available on the Connection tab.
+Run `/show-bridge-qr` in pi. Tap **Scan QR Code to Log In** in the app and scan it. The QR code contains the token: don't share it. After a bridge restart, scan again.
 
 ## Check
 

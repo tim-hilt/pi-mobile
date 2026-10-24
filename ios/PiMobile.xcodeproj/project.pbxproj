@@ -10,7 +10,6 @@
 		019AFAA024284C248F102B90 /* PiMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 152218D96E162DFB2E15C8F4 /* PiMobileApp.swift */; };
 		07B6231E0EBDEB0FA0C8279E /* PairingScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7246698BAC607059B2B0BB3C /* PairingScanner.swift */; };
 		09604782C51012FD65176914 /* MarkdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B82286688A03C5A1733E436 /* MarkdownTests.swift */; };
-		1F2D8B9C073E42E09ED7E3A4 /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689ED32C61A2E6FF82830EC8 /* ConnectionView.swift */; };
 		238C1613EC3BF70473E99D91 /* BridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40A3D77441C691F5698193B /* BridgeProtocol.swift */; };
 		27BA1A204DA23D2355AFCFAF /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42587727183BC81882C62A3F /* TranscriptView.swift */; };
 		34F6B198385C6D23F74A185C /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 264338A4F5C372A5F7B72BAB /* ComposerView.swift */; };
@@ -56,7 +55,6 @@
 		2E1F832975BDDBC97F32E65D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		42587727183BC81882C62A3F /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
 		61B9F4E0BE7F339E73BC2CAD /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
-		689ED32C61A2E6FF82830EC8 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
 		68D8DA152691A33978E7D962 /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
 		7246698BAC607059B2B0BB3C /* PairingScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanner.swift; sourceTree = "<group>"; };
 		78649E1B41ABEC4F1C8EF8A1 /* ProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolTests.swift; sourceTree = "<group>"; };
@@ -93,7 +91,6 @@
 				A40A3D77441C691F5698193B /* BridgeProtocol.swift */,
 				264338A4F5C372A5F7B72BAB /* ComposerView.swift */,
 				D0A859149B0A107AF2DF7094 /* ConnectionStore.swift */,
-				689ED32C61A2E6FF82830EC8 /* ConnectionView.swift */,
 				B76611C11FC63DFD941F080E /* DeepLink.swift */,
 				2E1F832975BDDBC97F32E65D /* Info.plist */,
 				61B9F4E0BE7F339E73BC2CAD /* Markdown.swift */,
@@ -247,7 +244,6 @@
 				238C1613EC3BF70473E99D91 /* BridgeProtocol.swift in Sources */,
 				34F6B198385C6D23F74A185C /* ComposerView.swift in Sources */,
 				4A6B88F328760D1045961A3D /* ConnectionStore.swift in Sources */,
-				1F2D8B9C073E42E09ED7E3A4 /* ConnectionView.swift in Sources */,
 				8F5D1C40060AFCADC12395F3 /* DeepLink.swift in Sources */,
 				AA358E3EE6BE15977627ABC5 /* Markdown.swift in Sources */,
 				A5F591382B623B9028A91B25 /* ModelsView.swift in Sources */,

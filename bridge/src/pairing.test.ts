@@ -11,6 +11,6 @@ test("encodes address and token into a pimobile://connect URL", () => {
 
 test("renders a multi-line QR code", () => {
   expect(
-    pairingQr("wss://pi.example.com", "t").split("\n").length
+    pairingQr(pairingUrl("wss://pi.example.com", "t")).split("\n").length
   ).toBeGreaterThan(10);
 });

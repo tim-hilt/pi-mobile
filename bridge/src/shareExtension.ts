@@ -8,12 +8,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultSocketPath } from "./link.js";
 import { LinkClient } from "./linkClient.js";
+import { pairingQr } from "./pairing.js";
 import { PiShare, type PiEvent } from "./piShare.js";
 
 /**
  * Pi extension that shares every interactive pi session with the bridge, so
  * the app can list and join it. The first pi to find no bridge starts one
- * (detached, outliving it) when `PI_BRIDGE_TOKEN` is set; see README.
+ * (detached, outliving it); see README. `/show-bridge-qr` shows the QR code
+ * the app scans to log in.
  */
 export default function share(pi: ExtensionAPI) {
   let current: PiShare | undefined;
@@ -36,6 +38,32 @@ export default function share(pi: ExtensionAPI) {
       link.close();
       delete (globalThis as Record<symbol, unknown>)[LINK];
     }
+  });
+  pi.registerCommand("show-bridge-qr", {
+    description: "Show the QR code that logs Pi Mobile in to the bridge",
+    handler: async (_args, ctx) => {
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify("show-bridge-qr requires interactive mode", "error");
+        return;
+      }
+      let url: string;
+      try {
+        url = await linkClient().pairingUrl();
+      } catch (e) {
+        ctx.ui.notify(`No pairing QR code: ${(e as Error).message}`, "error");
+        return;
+      }
+      // Never stored in the session: the code holds the bridge's token.
+      const lines = [
+        ...pairingQr(url).split("\n"),
+        "Scan with Pi Mobile. Any key closes.",
+      ];
+      await ctx.ui.custom<void>((_tui, _theme, _keys, done) => ({
+        render: (width: number) => lines.map((line) => line.slice(0, width)),
+        handleInput: () => done(),
+        invalidate: () => {},
+      }));
+    },
   });
   const forward = (event: { type: string }) =>
     current?.handle(event as PiEvent);
@@ -110,7 +138,7 @@ function bridgeStarter(): () => void {
   );
   let lastStart = -Infinity;
   return () => {
-    if (!process.env.PI_BRIDGE_TOKEN || !existsSync(main)) return;
+    if (!existsSync(main)) return;
     if (Date.now() - lastStart < RESPAWN_MS) return;
     lastStart = Date.now();
     const dir = dirname(defaultSocketPath());
