@@ -2,5 +2,5 @@
 - [x] Don't tie the bridge to one directory. It should work with all active pi sessions across directories
 - [x] Show active model, directory, context window ("18.8k/1.0M") and session price in status bar
 - [x] Let the user choose the active model on the phone
-- [ ] Render agent answers as markdown on the phone
+- [x] Render agent answers as markdown on the phone
 - [x] Use assets/pi_app_icon_1024.png as app icon

@@ -76,12 +76,73 @@ private struct MessageView: View {
         .font(.footnote)
         .foregroundStyle(.secondary)
       }
-      if !message.text.isEmpty { Text(message.text) }
+      if !message.text.isEmpty {
+        switch message.role {
+        case .user: Text(message.text)
+        case .assistant: MarkdownView(markdown: Markdown(parsing: message.text))
+        }
+      }
       if message.isStreaming { ProgressView() }
     }
     .padding(message.role == .user ? 10 : 0)
     .background(message.role == .user ? Color.accentColor.opacity(0.15) : .clear, in: .rect(cornerRadius: 12))
     .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+  }
+}
+
+/// An agent's answer laid out block by block, its text selectable.
+private struct MarkdownView: View {
+  let markdown: Markdown
+
+  /// Width of a list item's marker; item text, its continuation paragraphs and nested lists align on it.
+  @ScaledMetric private var markerWidth = 18.0
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      ForEach(markdown.blocks.indices, id: \.self) { index in
+        block(markdown.blocks[index])
+      }
+    }
+    .textSelection(.enabled)
+  }
+
+  @ViewBuilder private func block(_ block: Markdown.Block) -> some View {
+    switch block {
+    case .paragraph(let text): Text(text)
+    case .heading(let level, let text):
+      Text(text).font(level == 1 ? .title2 : level == 2 ? .title3 : .headline).bold()
+    case .listItem(let marker, let depth, let text):
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Text(marker ?? "").monospacedDigit().frame(minWidth: markerWidth, alignment: .trailing)
+        Text(text)
+      }
+      .padding(.leading, CGFloat(depth - 1) * (markerWidth + 6))
+    case .quote(let text):
+      Text(text)
+        .foregroundStyle(.secondary)
+        .padding(.leading, 10)
+        .overlay(alignment: .leading) { Rectangle().fill(.tertiary).frame(width: 3) }
+    case .code(let code):
+      ScrollView(.horizontal) {
+        Text(code).font(.caption.monospaced()).padding(8)
+      }
+      .background(.quaternary, in: .rect(cornerRadius: 8))
+    case .table(let rows):
+      ScrollView(.horizontal) {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+          ForEach(rows.indices, id: \.self) { row in
+            GridRow {
+              ForEach(rows[row].indices, id: \.self) { column in
+                Text(rows[row][column]).bold(row == 0)
+              }
+            }
+            if row == 0 { Divider() }
+          }
+        }
+      }
+      .font(.callout)
+    case .rule: Divider()
+    }
   }
 }
 
