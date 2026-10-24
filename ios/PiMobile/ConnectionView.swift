@@ -34,6 +34,9 @@ struct ConnectionView: View {
           .textInputAutocapitalization(.never)
           .autocorrectionDisabled()
         Button("Connect") { connect() }.disabled(config == nil)
+        if client.state != .offline {
+          Button("Disconnect", role: .destructive) { disconnect() }
+        }
       }
       Section("Status") {
         Label(client.state.title, systemImage: client.state.symbol)
@@ -56,6 +59,12 @@ struct ConnectionView: View {
       address = saved.url.absoluteString
       token = saved.token
     }
+  }
+
+  /// Also forgets the saved config, else the app would reconnect on the next foreground.
+  private func disconnect() {
+    store.clear()
+    client.disconnect()
   }
 
   private func connect() {
