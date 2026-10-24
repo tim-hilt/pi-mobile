@@ -1,6 +1,6 @@
 # Pi Mobile
 
-Native iOS client for the [pi](https://github.com/badlogic/pi-mono) agent.
+Native iOS client for the [pi](https://github.com/earendil-works/pi) agent.
 
 | Path               | What                                                        |
 | ------------------ | ----------------------------------------------------------- |
