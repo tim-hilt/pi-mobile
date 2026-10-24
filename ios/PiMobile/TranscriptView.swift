@@ -71,6 +71,7 @@ struct TranscriptView: View {
         .padding()
       }
       .defaultScrollAnchor(.bottom)
+      .scrollDismissesKeyboard(.interactively)
     }
   }
 }

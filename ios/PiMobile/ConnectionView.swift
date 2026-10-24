@@ -11,6 +11,9 @@ struct ConnectionView: View {
   @State private var token = ""
   @State private var saveError: String?
   @State private var showingScanner = false
+  @FocusState private var field: Field?
+
+  private enum Field { case address, token }
 
   private var config: BridgeConfig? {
     guard let url = URL(string: address.trimmingCharacters(in: .whitespaces)),
@@ -30,9 +33,15 @@ struct ConnectionView: View {
           .keyboardType(.URL)
           .textInputAutocapitalization(.never)
           .autocorrectionDisabled()
+          .focused($field, equals: .address)
+          .submitLabel(.next)
+          .onSubmit { field = .token }
         SecureField("Token", text: $token)
           .textInputAutocapitalization(.never)
           .autocorrectionDisabled()
+          .focused($field, equals: .token)
+          .submitLabel(.go)
+          .onSubmit { connect() }
         Button("Connect") { connect() }.disabled(config == nil)
         if client.state != .offline {
           Button("Disconnect", role: .destructive) { disconnect() }
@@ -47,6 +56,7 @@ struct ConnectionView: View {
         if let saveError { Text(saveError).font(.footnote) }
       }
     }
+    .scrollDismissesKeyboard(.immediately)
     .sheet(isPresented: $showingScanner) {
       PairingScanner { config in
         address = config.url.absoluteString
@@ -68,6 +78,7 @@ struct ConnectionView: View {
   }
 
   private func connect() {
+    field = nil
     guard let config else { return }
     do {
       try store.save(config)
