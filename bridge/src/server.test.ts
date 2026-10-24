@@ -914,6 +914,27 @@ test("getSessions lists the live sessions, most recently active first, and which
   expect(await c.next()).toMatchObject({ id: 4, result: { joinedId: "s1" } });
 });
 
+test("getSessions reports how each session's latest run ended, until pi replaces the session", async () => {
+  const b = await bridge(undefined, null);
+  const gateway = new FakeGateway("s1");
+  b.hub.add(gateway);
+  const c = await greeted(b);
+  const lastStopReason = async (id: number) => {
+    c.send(command(id, "getSessions", {}));
+    const record = (await c.next()) as {
+      result: { sessions: { lastStopReason?: string }[] };
+    };
+    return record.result.sessions[0]?.lastStopReason;
+  };
+
+  expect(await lastStopReason(2)).toBeUndefined();
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "runSettled", stopReason: "error" });
+  expect(await lastStopReason(3)).toBe("error");
+  gateway.replace("s2");
+  expect(await lastStopReason(4)).toBeUndefined();
+});
+
 test("joining a session answers with its epoch, then sends its snapshot", async () => {
   const b = await bridge();
   const c = await greeted(b);

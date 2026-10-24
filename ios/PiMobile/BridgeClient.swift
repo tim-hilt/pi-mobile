@@ -50,7 +50,7 @@ enum PromptMode: String, Sendable {
 /// (`failed`) or `disconnect` ends the attempts.
 ///
 /// Commands (`send`, `abort`, `skills`, `models`, `setModel`, `searchFiles`, `sessions`, `join`,
-/// `joinMostRecent`, `stats`, `show`) are async: they return once the bridge has answered
+/// `stats`, `show`) are async: they return once the bridge has answered
 /// and throw its `ProtocolError`, or `CommandError` if the connection is not usable. Their effects
 /// show up in `transcript` through the events the bridge streams, never through the return value.
 @MainActor @Observable
@@ -150,11 +150,6 @@ final class BridgeClient {
       transcript.markEnded()
       throw error
     }
-  }
-
-  /// Joins the most recently active live session, if there is one.
-  func joinMostRecent() async throws {
-    if let latest = try await sessions().sessions.first { try await join(sessionId: latest.id) }
   }
 
   /// Makes `sessionId` the session on show, once connected (e.g. after opening a notification's

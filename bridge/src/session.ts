@@ -7,6 +7,7 @@ import type {
   SessionHistory,
   SharedSessionInfo,
   SkillInfo,
+  StopReason,
 } from "./gateway.js";
 import type { RunNotifier } from "./ntfy.js";
 
@@ -38,6 +39,8 @@ export interface SessionStats extends GatewayStats {
 /** A live session as `getSessions` lists it. */
 export interface LiveSession extends SharedSessionInfo {
   running: boolean;
+  /** How the latest run settled; absent until one has since pi began the session. */
+  lastStopReason?: StopReason;
   /** ISO 8601 time of the latest event. */
   activeAt: string;
 }
@@ -59,6 +62,7 @@ export class Session {
   readonly epoch = randomUUID();
   private seq = 0;
   private runStartedAt: number | undefined;
+  private lastStopReason: StopReason | undefined;
   /** Newest events, oldest first; holds `seq - log.length + 1 .. seq`. */
   private log: BridgeEvent[] = [];
   private runs = 0;
@@ -85,6 +89,7 @@ export class Session {
     return {
       ...this.gateway.info(),
       running: this.runStartedAt !== undefined,
+      ...(this.lastStopReason && { lastStopReason: this.lastStopReason }),
       activeAt: this.activeAt.toISOString(),
     };
   }
@@ -229,6 +234,7 @@ export class Session {
    */
   private restart(): void {
     this.runStartedAt = undefined;
+    this.lastStopReason = undefined;
     this.streaming = undefined;
     this.runs = 0;
     this.runDurationMs = 0;
@@ -256,6 +262,7 @@ export class Session {
         performance.now() - (this.runStartedAt ?? performance.now())
       );
       this.runStartedAt = undefined;
+      this.lastStopReason = event.stopReason;
       this.streaming = undefined;
       this.runs++;
       this.runDurationMs += durationMs;

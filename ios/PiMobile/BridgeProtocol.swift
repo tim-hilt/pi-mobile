@@ -61,24 +61,24 @@ struct LiveSession: Decodable, Equatable, Identifiable, Sendable {
   let cwd: String
   /// The session's first user message; empty while there is none.
   let preview: String
-  /// Whether a run is active.
-  let running: Bool
+  let activity: Activity
   /// When the session last did anything.
   let activeAt: Date
 
   /// What to call the session in a list: its name, else how it began.
   var title: String { name ?? (preview.isEmpty ? "New session" : preview) }
 
-  init(id: String, name: String?, cwd: String, preview: String, running: Bool, activeAt: Date) {
-    self.id = id
-    self.name = name
-    self.cwd = cwd
-    self.preview = preview
-    self.running = running
-    self.activeAt = activeAt
+  /// What the session is up to.
+  enum Activity: Equatable, Sendable {
+    /// A run is active.
+    case working
+    /// Idle, and its latest run (if any) did not fail. Aborted and cut-off runs count as finished.
+    case finished
+    /// Idle, and its latest run failed.
+    case failed
   }
 
-  private enum CodingKeys: String, CodingKey { case id, name, cwd, preview, running, activeAt }
+  private enum CodingKeys: String, CodingKey { case id, name, cwd, preview, running, lastStopReason, activeAt }
 
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -86,7 +86,14 @@ struct LiveSession: Decodable, Equatable, Identifiable, Sendable {
     name = try values.decodeIfPresent(String.self, forKey: .name)
     cwd = try values.decode(String.self, forKey: .cwd)
     preview = try values.decode(String.self, forKey: .preview)
-    running = try values.decode(Bool.self, forKey: .running)
+    activity =
+      if try values.decode(Bool.self, forKey: .running) {
+        .working
+      } else if try values.decodeIfPresent(String.self, forKey: .lastStopReason) == "error" {
+        .failed
+      } else {
+        .finished
+      }
     // The bridge sends ISO 8601 with milliseconds, which the plain strategy does not parse.
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

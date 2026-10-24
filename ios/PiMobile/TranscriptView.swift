@@ -1,60 +1,61 @@
 import SwiftUI
 
-/// The synced conversation, newest at the bottom, with the composer and the session's status below it.
+/// One session's synced conversation, newest at the bottom, with the composer and the session's
+/// status below it. Shows the session (joining it) when it appears.
 struct TranscriptView: View {
   let client: BridgeClient
-  /// Called with the config from a scanned pairing QR code.
-  let onPair: (BridgeConfig) -> Void
+  let sessionId: String
 
-  @State private var showingScanner = false
-  @State private var showingSessions = false
+  @State private var failure: String?
   @State private var showingModels = false
+  @State private var showingStats = false
+
+  /// Until the join lands, `client.transcript` still holds the previously shown session.
+  private var isShown: Bool { client.transcript.sessionId == sessionId }
+  private var isLive: Bool { isShown && client.state == .connected && !client.transcript.hasEnded }
 
   var body: some View {
-    NavigationStack {
-      VStack(spacing: 0) {
-        conversation
-        ComposerView(client: client)
-        if client.transcript.sessionId != nil {
-          StatusBar(cwd: client.transcript.cwd, status: client.transcript.status) { showingModels = true }
-            .disabled(client.state != .connected || client.transcript.hasEnded)
-        }
+    VStack(spacing: 0) {
+      conversation
+      ComposerView(client: client).disabled(!isShown)
+      if isShown {
+        StatusBar(cwd: client.transcript.cwd, status: client.transcript.status) { showingModels = true }
+          .disabled(!isLive)
       }
-      .navigationTitle(client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "Transcript")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        Button("Sessions", systemImage: "list.bullet") { showingSessions = true }
-          .disabled(client.state != .connected)
+    }
+    .navigationTitle(isShown ? client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "" : "")
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      Button("Stats", systemImage: "info.circle") { showingStats = true }.disabled(!isLive)
+    }
+    .sheet(isPresented: $showingModels) { ModelsView(client: client) }
+    .sheet(isPresented: $showingStats) { StatsView(client: client) }
+    .task(id: sessionId) {
+      do {
+        try await client.show(sessionId: sessionId)
+        failure = nil
+      } catch {
+        failure = error.localizedDescription
       }
-      .sheet(isPresented: $showingSessions) { SessionsView(client: client) }
-      .sheet(isPresented: $showingModels) { ModelsView(client: client) }
-      .sheet(isPresented: $showingScanner) { PairingScanner(onScan: onPair) }
     }
   }
 
-  @ViewBuilder private var conversation: some View {
-    let transcript = client.transcript
-    if client.state != .connected && transcript.sessionId == nil {
-      ContentUnavailableView {
-        Label("Not connected", systemImage: "network.slash")
-      } description: {
-        Text("Run the bridge on your Mac and scan the QR code it prints.")
-      } actions: {
-        Button("Scan QR Code to Log In", systemImage: "qrcode.viewfinder") { showingScanner = true }
-          .buttonStyle(.borderedProminent)
-      }
-    } else if transcript.sessionId == nil {
-      ContentUnavailableView {
-        Label("No session joined", systemImage: "terminal")
-      } description: {
-        Text("Start pi on your Mac, then pick its session.")
-      } actions: {
-        Button("Sessions") { showingSessions = true }
-      }
-    } else if transcript.entries.isEmpty && !transcript.isRunning && !transcript.hasEnded {
-      ContentUnavailableView("No messages yet", systemImage: "text.bubble")
-    } else {
-      ScrollView {
+  /// Always a scroll view, so dragging down dismisses the keyboard whatever is on show.
+  private var conversation: some View {
+    ScrollView {
+      let transcript = client.transcript
+      if !isShown {
+        Group {
+          if let failure {
+            ContentUnavailableView("Could not open the session", systemImage: "exclamationmark.triangle", description: Text(failure))
+          } else {
+            ProgressView()
+          }
+        }
+        .containerRelativeFrame(.vertical)
+      } else if transcript.entries.isEmpty && !transcript.isRunning && !transcript.hasEnded {
+        ContentUnavailableView("No messages yet", systemImage: "text.bubble").containerRelativeFrame(.vertical)
+      } else {
         LazyVStack(alignment: .leading, spacing: 12) {
           ForEach(transcript.entries) { entry in
             switch entry {
@@ -70,9 +71,46 @@ struct TranscriptView: View {
         }
         .padding()
       }
-      .defaultScrollAnchor(.bottom)
-      .scrollDismissesKeyboard(.interactively)
     }
+    .defaultScrollAnchor(.bottom)
+    .scrollDismissesKeyboard(.interactively)
+  }
+}
+
+/// Sheet with the shown session's counts, run timing and cost.
+private struct StatsView: View {
+  let client: BridgeClient
+
+  @Environment(\.dismiss) private var dismiss
+  @State private var stats: SessionStats?
+  @State private var failure: String?
+
+  var body: some View {
+    NavigationStack {
+      List {
+        if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
+        if let stats {
+          LabeledContent("Runs", value: "\(stats.runs) · \(format(durationMs: stats.runDurationMs))")
+          LabeledContent("Messages", value: "\(stats.userMessages) sent · \(stats.assistantMessages) replies")
+          LabeledContent("Tool calls", value: "\(stats.toolCalls)")
+          LabeledContent("Tokens", value: stats.tokens.formatted())
+          LabeledContent("Cost", value: stats.cost.formatted(.currency(code: "USD")))
+        }
+      }
+      .navigationTitle("Stats")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+      }
+      .task {
+        do {
+          stats = try await client.stats()
+        } catch {
+          failure = error.localizedDescription
+        }
+      }
+    }
+    .presentationDetents([.medium])
   }
 }
 

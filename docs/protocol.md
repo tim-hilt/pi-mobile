@@ -62,7 +62,7 @@ After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloud
 
 ### `getSessions`
 
-Params `{}`. Result `{ sessions, joinedId? }` — every live session, most recently active first, as `{ id, name?, cwd, preview, running, activeAt }` (`name` user-given; `preview` the first user message, `""` if none; `activeAt` ISO 8601 of the latest event). `joinedId` is the session this connection is joined to.
+Params `{}`. Result `{ sessions, joinedId? }` — every live session, most recently active first, as `{ id, name?, cwd, preview, running, lastStopReason?, activeAt }` (`name` user-given; `preview` the first user message, `""` if none; `lastStopReason` the `stopReason` of the latest `runSettled`, absent until a run settled since pi began the session; `activeAt` ISO 8601 of the latest event). `joinedId` is the session this connection is joined to.
 
 ### `joinSession`
 

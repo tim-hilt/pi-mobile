@@ -1,108 +1,153 @@
 import SwiftUI
 
-/// Sheet listing the pi sessions running on the Mac, grouped by directory, to join one; plus the
-/// joined session's stats.
+/// Home screen: the pi sessions running on the Mac, most recently active first, each with an icon
+/// showing what it is up to; tapping one opens its transcript. Settings sit behind the gear.
 struct SessionsView: View {
   let client: BridgeClient
+  let store: ConnectionStore
+  /// Called with the config from a scanned pairing QR code.
+  let onPair: (BridgeConfig) -> Void
 
-  @Environment(\.dismiss) private var dismiss
-  @State private var list: SessionList?
-  @State private var stats: SessionStats?
+  @State private var sessions: [LiveSession]?
   @State private var failure: String?
-
-  /// Directories in order of their most recently active session.
-  private var groups: [(cwd: String, sessions: [LiveSession])] {
-    var order: [String] = []
-    var byCwd: [String: [LiveSession]] = [:]
-    for session in list?.sessions ?? [] {
-      if byCwd[session.cwd] == nil { order.append(session.cwd) }
-      byCwd[session.cwd, default: []].append(session)
-    }
-    return order.map { ($0, byCwd[$0] ?? []) }
-  }
+  @State private var showingSettings = false
+  @State private var showingScanner = false
 
   var body: some View {
-    NavigationStack {
+    content
+      .toolbar {
+        // A logo, not a button: no glass behind it.
+        if #available(iOS 26, *) {
+          ToolbarItem(placement: .topBarLeading) { logo }.sharedBackgroundVisibility(.hidden)
+        } else {
+          ToolbarItem(placement: .topBarLeading) { logo }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Settings", systemImage: "gearshape") { showingSettings = true }
+        }
+      }
+      .sheet(isPresented: $showingSettings) {
+        NavigationStack {
+          ConnectionView(client: client, store: store, onPair: onPair)
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+              ToolbarItem(placement: .confirmationAction) { Button("Done") { showingSettings = false } }
+            }
+        }
+      }
+      .sheet(isPresented: $showingScanner) { PairingScanner(onScan: onPair) }
+      // The list has no push channel: poll while it is on screen, so the icons stay current.
+      .task(id: client.state == .connected) {
+        while client.state == .connected && !Task.isCancelled {
+          await load()
+          try? await Task.sleep(for: .seconds(2))
+        }
+      }
+  }
+
+  @ViewBuilder private var content: some View {
+    if case .failed(let error) = client.state {
+      ContentUnavailableView {
+        Label("Connection failed", systemImage: "exclamationmark.triangle")
+      } description: {
+        Text(error.message)
+      } actions: {
+        scanButton
+      }
+    } else if let sessions {
       List {
         if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
-        if let stats, !client.transcript.hasEnded { Section("This session") { StatsRows(stats: stats) } }
-        if list?.sessions.isEmpty == true {
+        if sessions.isEmpty {
           ContentUnavailableView(
             "No pi sessions", systemImage: "terminal",
             description: Text("Start pi on your Mac to see it here."))
         }
-        ForEach(groups, id: \.cwd) { group in
-          Section(URL(fileURLWithPath: group.cwd).lastPathComponent) {
-            ForEach(group.sessions) { session in
-              Button { join(session.id) } label: {
-                SessionRow(session: session, isJoined: session.id == list?.joinedId)
-              }
-            }
-          }
+        ForEach(sessions) { session in
+          NavigationLink(value: session.id) { SessionRow(session: session) }
         }
       }
-      .navigationTitle("Sessions")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-      }
       .refreshable { await load() }
-      // A new session on show refreshes both lists.
-      .task(id: client.transcript.sessionId) { await load() }
+    } else if client.state == .offline {
+      ContentUnavailableView {
+        Label("Not connected", systemImage: "network.slash")
+      } description: {
+        Text("Run the bridge on your Mac and scan the QR code it prints.")
+      } actions: {
+        scanButton
+      }
+    } else {
+      ProgressView("Connecting…")
     }
+  }
+
+  private var logo: some View {
+    Image("PiLogo").resizable().scaledToFit().frame(height: 28).accessibilityLabel("Pi")
+  }
+
+  private var scanButton: some View {
+    Button("Scan QR Code to Log In", systemImage: "qrcode.viewfinder") { showingScanner = true }
+      .buttonStyle(.borderedProminent)
   }
 
   private func load() async {
     do {
-      list = try await client.sessions()
-      stats = list?.joinedId == nil ? nil : try await client.stats()
+      sessions = try await client.sessions().sessions
       failure = nil
     } catch {
       failure = error.localizedDescription
     }
   }
-
-  /// Joins and closes the sheet on success, so its transcript is in view.
-  private func join(_ id: String) {
-    Task {
-      do {
-        try await client.join(sessionId: id)
-        dismiss()
-      } catch {
-        failure = error.localizedDescription
-      }
-    }
-  }
 }
 
+/// Laid out like a Mail row: status, project and last activity on top, how the session began below.
 private struct SessionRow: View {
   let session: LiveSession
-  let isJoined: Bool
 
   var body: some View {
-    HStack {
+    HStack(spacing: 12) {
+      ActivityIcon(activity: session.activity)
       VStack(alignment: .leading, spacing: 2) {
-        Text(session.title).lineLimit(2)
-        Text(session.activeAt.formatted(.relative(presentation: .named)))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline) {
+          Text(URL(fileURLWithPath: session.cwd).lastPathComponent).font(.headline).lineLimit(1)
+          Spacer()
+          Text(session.activeAt, format: .relative(presentation: .named, unitsStyle: .abbreviated))
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        Text(session.title).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
       }
-      Spacer()
-      if session.running { ProgressView().controlSize(.small) }
-      if isJoined { Image(systemName: "checkmark").foregroundStyle(.tint) }
     }
-    .foregroundStyle(.primary)
   }
 }
 
-private struct StatsRows: View {
-  let stats: SessionStats
+/// The transcript's tool-call vocabulary: a spinner while working, a green check once finished,
+/// a red cross after a failed run.
+private struct ActivityIcon: View {
+  let activity: LiveSession.Activity
+
+  /// One width for all three, so the rows' text lines up.
+  @ScaledMetric private var width = 22.0
 
   var body: some View {
-    LabeledContent("Runs", value: "\(stats.runs) · \(format(durationMs: stats.runDurationMs))")
-    LabeledContent("Messages", value: "\(stats.userMessages) sent · \(stats.assistantMessages) replies")
-    LabeledContent("Tool calls", value: "\(stats.toolCalls)")
-    LabeledContent("Tokens", value: stats.tokens.formatted())
-    LabeledContent("Cost", value: stats.cost.formatted(.currency(code: "USD")))
+    Group {
+      switch activity {
+      case .working: ProgressView()
+      case .finished: Image(systemName: "checkmark.circle").foregroundStyle(.green)
+      case .failed: Image(systemName: "xmark.circle").foregroundStyle(.red)
+      }
+    }
+    .font(.title3)
+    .frame(width: width)
+    .accessibilityElement()
+    .accessibilityLabel(label)
+  }
+
+  private var label: String {
+    switch activity {
+    case .working: "Working"
+    case .finished: "Finished"
+    case .failed: "Failed"
+    }
   }
 }

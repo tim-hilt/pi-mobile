@@ -236,7 +236,7 @@ extension BridgeCommandTests {
       peer.send(
         result(
           2,
-          #"{"sessions":[{"id":"s2","name":"Refactor","cwd":"/work/a","preview":"first","running":true,"activeAt":"2025-01-02T03:04:05.000Z"},{"id":"s1","cwd":"/work/b","preview":"","running":false,"activeAt":"2025-01-01T00:00:00.000Z"}],"joinedId":"s1"}"#
+          #"{"sessions":[{"id":"s2","name":"Refactor","cwd":"/work/a","preview":"first","running":true,"activeAt":"2025-01-02T03:04:05.000Z"},{"id":"s1","cwd":"/work/b","preview":"","running":false,"lastStopReason":"error","activeAt":"2025-01-01T00:00:00.000Z"},{"id":"s0","cwd":"/work/c","preview":"","running":false,"lastStopReason":"aborted","activeAt":"2025-01-01T00:00:00.000Z"}],"joinedId":"s1"}"#
         ))
     }
     defer { bridge.stop() }
@@ -244,31 +244,12 @@ extension BridgeCommandTests {
     let list = try await client.sessions()
 
     #expect(list.joinedId == "s1")
-    #expect(list.sessions.map(\.id) == ["s2", "s1"])
-    #expect(list.sessions.map(\.title) == ["Refactor", "New session"])
-    #expect(list.sessions.map(\.cwd) == ["/work/a", "/work/b"])
-    #expect(list.sessions.map(\.running) == [true, false])
+    #expect(list.sessions.map(\.id) == ["s2", "s1", "s0"])
+    #expect(list.sessions.map(\.title) == ["Refactor", "New session", "New session"])
+    #expect(list.sessions.map(\.cwd) == ["/work/a", "/work/b", "/work/c"])
+    #expect(list.sessions.map(\.activity) == [.working, .failed, .finished])
     #expect(list.sessions[0].activeAt == Date(timeIntervalSince1970: 1_735_787_045))
     #expect(received.value?.first?.contains(#""name":"getSessions""#) == true)
-  }
-
-  @Test func joiningTheMostRecentSessionPicksTheFirstListed() async throws {
-    let (client, bridge, received) = try await connected { frame, peer in
-      if frame.contains("getSessions") {
-        peer.send(
-          result(
-            2,
-            #"{"sessions":[{"id":"s2","cwd":"/a","preview":"","running":false,"activeAt":"2025-01-02T03:04:05.000Z"}]}"#))
-      } else {
-        peer.send(result(3, #"{"epoch":"e"}"#))
-      }
-    }
-    defer { bridge.stop() }
-
-    try await client.joinMostRecent()
-
-    #expect(received.value?.last?.contains(#""name":"joinSession""#) == true)
-    #expect(received.value?.last?.contains(#""id":"s2""#) == true)
   }
 
   @Test func rejoiningASessionTheBridgeNoLongerHasMarksItEnded() async throws {
