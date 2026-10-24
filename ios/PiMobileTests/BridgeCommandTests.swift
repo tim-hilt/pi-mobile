@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import PiClient
+@testable import PiMobile
 
 private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":2}}"# + "\n"
 

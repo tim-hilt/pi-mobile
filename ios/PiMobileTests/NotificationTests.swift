@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import UserNotifications
 
-@testable import PiClient
+@testable import PiMobile
 
 /// An ntfy WebSocket `message` frame whose body is `notice`, as ntfy.sh sends it.
 private func ntfyMessage(_ notice: String) -> String {

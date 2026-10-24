@@ -6,7 +6,7 @@ struct ConnectionStore {
   /// Keychain service namespace; tests pass a unique one for isolation.
   let service: String
 
-  init(service: String = "dev.timhilt.PiClient.bridge") {
+  init(service: String = "dev.timhilt.PiMobile.bridge") {
     self.service = service
   }
 

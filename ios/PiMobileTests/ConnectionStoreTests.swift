@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 
-@testable import PiClient
+@testable import PiMobile
 
 @Suite(.serialized) struct ConnectionStoreTests {
   @Test func persistsConfigAcrossInstances() throws {
-    let service = "dev.timhilt.PiClientTests.\(UUID().uuidString)"
+    let service = "dev.timhilt.PiMobileTests.\(UUID().uuidString)"
     defer { ConnectionStore(service: service).clear() }
 
     #expect(ConnectionStore(service: service).load() == nil)

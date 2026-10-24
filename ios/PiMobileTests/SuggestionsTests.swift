@@ -1,6 +1,6 @@
 import Testing
 
-@testable import PiClient
+@testable import PiMobile
 
 @Suite struct SuggestionsTests {
   private let skills = [

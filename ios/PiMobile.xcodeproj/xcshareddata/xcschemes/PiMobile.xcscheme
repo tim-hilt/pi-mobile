@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "B189B7E7EBC195F493A6543E"
-               BuildableName = "PiClient.app"
-               BlueprintName = "PiClient"
-               ReferencedContainer = "container:PiClient.xcodeproj">
+               BuildableName = "PiMobile.app"
+               BlueprintName = "PiMobile"
+               ReferencedContainer = "container:PiMobile.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B189B7E7EBC195F493A6543E"
-            BuildableName = "PiClient.app"
-            BlueprintName = "PiClient"
-            ReferencedContainer = "container:PiClient.xcodeproj">
+            BuildableName = "PiMobile.app"
+            BlueprintName = "PiMobile"
+            ReferencedContainer = "container:PiMobile.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -45,9 +45,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "874273959A83F051C704DD7D"
-               BuildableName = "PiClientTests.xctest"
-               BlueprintName = "PiClientTests"
-               ReferencedContainer = "container:PiClient.xcodeproj">
+               BuildableName = "PiMobileTests.xctest"
+               BlueprintName = "PiMobileTests"
+               ReferencedContainer = "container:PiMobile.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -69,9 +69,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B189B7E7EBC195F493A6543E"
-            BuildableName = "PiClient.app"
-            BlueprintName = "PiClient"
-            ReferencedContainer = "container:PiClient.xcodeproj">
+            BuildableName = "PiMobile.app"
+            BlueprintName = "PiMobile"
+            ReferencedContainer = "container:PiMobile.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -86,9 +86,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B189B7E7EBC195F493A6543E"
-            BuildableName = "PiClient.app"
-            BlueprintName = "PiClient"
-            ReferencedContainer = "container:PiClient.xcodeproj">
+            BuildableName = "PiMobile.app"
+            BlueprintName = "PiMobile"
+            ReferencedContainer = "container:PiMobile.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

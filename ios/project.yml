@@ -1,4 +1,4 @@
-name: PiClient
+name: PiMobile
 options:
   bundleIdPrefix: dev.timhilt
   deploymentTarget:
@@ -8,28 +8,29 @@ settings:
     SWIFT_VERSION: "6.0"
     GENERATE_INFOPLIST_FILE: YES
 targets:
-  PiClient:
+  PiMobile:
     type: application
     platform: iOS
-    sources: [PiClient]
+    sources: [PiMobile]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.timhilt.PiClient
+        PRODUCT_BUNDLE_IDENTIFIER: dev.timhilt.PiMobile
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-  PiClientTests:
+        INFOPLIST_KEY_CFBundleDisplayName: "Pi Mobile"
+  PiMobileTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [PiClientTests]
+    sources: [PiMobileTests]
     dependencies:
-      - target: PiClient
+      - target: PiMobile
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.timhilt.PiClientTests
+        PRODUCT_BUNDLE_IDENTIFIER: dev.timhilt.PiMobileTests
 schemes:
-  PiClient:
+  PiMobile:
     build:
       targets:
-        PiClient: all
+        PiMobile: all
     test:
-      targets: [PiClientTests]
+      targets: [PiMobileTests]

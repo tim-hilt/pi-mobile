@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import PiClient
+@testable import PiMobile
 
 @Suite struct MarkdownTests {
   /// The blocks of `source` with their text flattened, so tests read like the rendered layout.

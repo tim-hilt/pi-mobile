@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PiClientApp: App {
+struct PiMobileApp: App {
   private enum Tab { case transcript, connection }
 
   @State private var client = BridgeClient()

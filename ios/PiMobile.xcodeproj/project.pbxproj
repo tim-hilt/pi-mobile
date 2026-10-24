@@ -19,7 +19,7 @@
 		5C74CBDF1C1CD8BC589EA885 /* Suggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A872C5EA110C28BB414C14 /* Suggestions.swift */; };
 		61AA8EDD80EC301C17C28AE2 /* NotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EF1B5403ABDE81812E24610 /* NotificationTests.swift */; };
 		745B422EEAAAA0783CB6CD5F /* FakeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */; };
-		7CB9611764B9AE46E0EA4359 /* PiClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6823103B65B8BAAE57AABB52 /* PiClientApp.swift */; };
+		7CB9611764B9AE46E0EA4359 /* PiMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6823103B65B8BAAE57AABB52 /* PiMobileApp.swift */; };
 		87EF2C70AC20EE7C14FDF691 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */; };
 		931949D2158ED8602B7EE894 /* ConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB0719687016E1D6C1517EE /* ConnectionStore.swift */; };
 		9682DC161B45E2B0E828A2EA /* MarkdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55C1D2C5CF513C4412BB309C /* MarkdownTests.swift */; };
@@ -38,7 +38,7 @@
 			containerPortal = DDF66FE25BD124762970A057 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = B189B7E7EBC195F493A6543E;
-			remoteInfo = PiClient;
+			remoteInfo = PiMobile;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -51,8 +51,8 @@
 		57A872C5EA110C28BB414C14 /* Suggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Suggestions.swift; sourceTree = "<group>"; };
 		5A7797D453BCDAFB9100E78D /* ConnectionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStoreTests.swift; sourceTree = "<group>"; };
 		664C7BC345BE89BB7C52D78C /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
-		664DA1BB897EB216FD716D97 /* PiClient.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PiClient.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		6823103B65B8BAAE57AABB52 /* PiClientApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiClientApp.swift; sourceTree = "<group>"; };
+		664DA1BB897EB216FD716D97 /* PiMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PiMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6823103B65B8BAAE57AABB52 /* PiMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMobileApp.swift; sourceTree = "<group>"; };
 		72D79553F7A35F045451144D /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
 		A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
 		B1FA77CD75D691E644841093 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
@@ -62,7 +62,7 @@
 		BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBridge.swift; sourceTree = "<group>"; };
 		D4A0C40260892F3C60295199 /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
 		ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionsTests.swift; sourceTree = "<group>"; };
-		F1033CE21B96DC349C1B6D25 /* PiClientTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PiClientTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1033CE21B96DC349C1B6D25 /* PiMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PiMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F40E60F44946D0A77AD57B27 /* ProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolTests.swift; sourceTree = "<group>"; };
 		F5C52994EACF78C7101A20C7 /* BridgeProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeProtocol.swift; sourceTree = "<group>"; };
 		F6EDE49D5046EE2366A0FF40 /* BridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClient.swift; sourceTree = "<group>"; };
@@ -74,8 +74,8 @@
 		41F889DC3BC5A06BBA270774 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				664DA1BB897EB216FD716D97 /* PiClient.app */,
-				F1033CE21B96DC349C1B6D25 /* PiClientTests.xctest */,
+				664DA1BB897EB216FD716D97 /* PiMobile.app */,
+				F1033CE21B96DC349C1B6D25 /* PiMobileTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,13 +83,13 @@
 		7F6FEA4E2968C4CA7C05B6C9 = {
 			isa = PBXGroup;
 			children = (
-				E36C6F86036996BB761A349B /* PiClient */,
-				F3BD87052FD9D01D60819DB9 /* PiClientTests */,
+				E36C6F86036996BB761A349B /* PiMobile */,
+				F3BD87052FD9D01D60819DB9 /* PiMobileTests */,
 				41F889DC3BC5A06BBA270774 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		E36C6F86036996BB761A349B /* PiClient */ = {
+		E36C6F86036996BB761A349B /* PiMobile */ = {
 			isa = PBXGroup;
 			children = (
 				BD921047ECEB9467F7EA7D85 /* Assets.xcassets */,
@@ -101,16 +101,16 @@
 				664C7BC345BE89BB7C52D78C /* Markdown.swift */,
 				D4A0C40260892F3C60295199 /* ModelsView.swift */,
 				B85E68D53450A36745BE8651 /* Notifications.swift */,
-				6823103B65B8BAAE57AABB52 /* PiClientApp.swift */,
+				6823103B65B8BAAE57AABB52 /* PiMobileApp.swift */,
 				B1FA77CD75D691E644841093 /* SessionsView.swift */,
 				57A872C5EA110C28BB414C14 /* Suggestions.swift */,
 				2D9AF9FE9CC9038B8E2D475A /* Transcript.swift */,
 				A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */,
 			);
-			path = PiClient;
+			path = PiMobile;
 			sourceTree = "<group>";
 		};
-		F3BD87052FD9D01D60819DB9 /* PiClientTests */ = {
+		F3BD87052FD9D01D60819DB9 /* PiMobileTests */ = {
 			isa = PBXGroup;
 			children = (
 				35FD9A7F792B3B5BE75ECF5D /* BridgeClientTests.swift */,
@@ -123,15 +123,15 @@
 				ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */,
 				B6821A3F3F700605BE20AD43 /* TranscriptSyncTests.swift */,
 			);
-			path = PiClientTests;
+			path = PiMobileTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		874273959A83F051C704DD7D /* PiClientTests */ = {
+		874273959A83F051C704DD7D /* PiMobileTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F7237DDC8595B079320AF9AF /* Build configuration list for PBXNativeTarget "PiClientTests" */;
+			buildConfigurationList = F7237DDC8595B079320AF9AF /* Build configuration list for PBXNativeTarget "PiMobileTests" */;
 			buildPhases = (
 				A7169BD4F6553DD2ACF4FB6F /* Sources */,
 			);
@@ -140,16 +140,16 @@
 			dependencies = (
 				9F9156D3D2D217BB333C9337 /* PBXTargetDependency */,
 			);
-			name = PiClientTests;
+			name = PiMobileTests;
 			packageProductDependencies = (
 			);
-			productName = PiClientTests;
-			productReference = F1033CE21B96DC349C1B6D25 /* PiClientTests.xctest */;
+			productName = PiMobileTests;
+			productReference = F1033CE21B96DC349C1B6D25 /* PiMobileTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		B189B7E7EBC195F493A6543E /* PiClient */ = {
+		B189B7E7EBC195F493A6543E /* PiMobile */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BAAAC51F27D692E9822C4667 /* Build configuration list for PBXNativeTarget "PiClient" */;
+			buildConfigurationList = BAAAC51F27D692E9822C4667 /* Build configuration list for PBXNativeTarget "PiMobile" */;
 			buildPhases = (
 				E732C6D646BF2EE9C73D231F /* Sources */,
 				86B9571124EE6AF8988EDFD6 /* Resources */,
@@ -158,11 +158,11 @@
 			);
 			dependencies = (
 			);
-			name = PiClient;
+			name = PiMobile;
 			packageProductDependencies = (
 			);
-			productName = PiClient;
-			productReference = 664DA1BB897EB216FD716D97 /* PiClient.app */;
+			productName = PiMobile;
+			productReference = 664DA1BB897EB216FD716D97 /* PiMobile.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -176,7 +176,7 @@
 				TargetAttributes = {
 				};
 			};
-			buildConfigurationList = A37742351247BCE00374F84F /* Build configuration list for PBXProject "PiClient" */;
+			buildConfigurationList = A37742351247BCE00374F84F /* Build configuration list for PBXProject "PiMobile" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -190,8 +190,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				B189B7E7EBC195F493A6543E /* PiClient */,
-				874273959A83F051C704DD7D /* PiClientTests */,
+				B189B7E7EBC195F493A6543E /* PiMobile */,
+				874273959A83F051C704DD7D /* PiMobileTests */,
 			);
 		};
 /* End PBXProject section */
@@ -236,7 +236,7 @@
 				EB283836A97F118AA46A7F53 /* Markdown.swift in Sources */,
 				F6F691179AFD4952E8C0B8FA /* ModelsView.swift in Sources */,
 				CD2A83C65FE1A962EEC36CF5 /* Notifications.swift in Sources */,
-				7CB9611764B9AE46E0EA4359 /* PiClientApp.swift in Sources */,
+				7CB9611764B9AE46E0EA4359 /* PiMobileApp.swift in Sources */,
 				4599765F05D5E9E9831A2974 /* SessionsView.swift in Sources */,
 				5C74CBDF1C1CD8BC589EA885 /* Suggestions.swift in Sources */,
 				0EEC917DAECED15161C697E1 /* Transcript.swift in Sources */,
@@ -249,7 +249,7 @@
 /* Begin PBXTargetDependency section */
 		9F9156D3D2D217BB333C9337 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = B189B7E7EBC195F493A6543E /* PiClient */;
+			target = B189B7E7EBC195F493A6543E /* PiMobile */;
 			targetProxy = A737060F97EFD43EEC1B86A1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -326,11 +326,12 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Pi Mobile";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiClient;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobile;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -343,11 +344,12 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Pi Mobile";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiClient;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobile;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -362,10 +364,10 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiClientTests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobileTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PiClient.app/PiClient";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PiMobile.app/PiMobile";
 			};
 			name = Release;
 		};
@@ -378,10 +380,10 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiClientTests;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobileTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PiClient.app/PiClient";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PiMobile.app/PiMobile";
 			};
 			name = Debug;
 		};
@@ -445,7 +447,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A37742351247BCE00374F84F /* Build configuration list for PBXProject "PiClient" */ = {
+		A37742351247BCE00374F84F /* Build configuration list for PBXProject "PiMobile" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				542FDF1C6948E1471DA448AB /* Debug */,
@@ -454,7 +456,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		BAAAC51F27D692E9822C4667 /* Build configuration list for PBXNativeTarget "PiClient" */ = {
+		BAAAC51F27D692E9822C4667 /* Build configuration list for PBXNativeTarget "PiMobile" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				9F40B712C968F94A594473FB /* Debug */,
@@ -463,7 +465,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		F7237DDC8595B079320AF9AF /* Build configuration list for PBXNativeTarget "PiClientTests" */ = {
+		F7237DDC8595B079320AF9AF /* Build configuration list for PBXNativeTarget "PiMobileTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BE4FC4895079CAF96F6826A0 /* Debug */,

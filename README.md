@@ -1,4 +1,4 @@
-# pi-native-client
+# Pi Mobile
 
 Native iOS client for the [pi](https://github.com/badlogic/pi-mono) agent.
 
@@ -22,7 +22,7 @@ iOS (Xcode, `brew install xcodegen`):
 
 ```sh
 cd ios && xcodegen generate   # after editing project.yml
-xcodebuild test -scheme PiClient -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
+xcodebuild test -scheme PiMobile -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
 ```
 
 ## Share pi sessions
