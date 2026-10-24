@@ -7,152 +7,140 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0E0BE9AD6D5FF492BA23188E /* TranscriptSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6821A3F3F700605BE20AD43 /* TranscriptSyncTests.swift */; };
-		0EEC917DAECED15161C697E1 /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9AF9FE9CC9038B8E2D475A /* Transcript.swift */; };
-		1E366D1A3AC96A961528AFB2 /* ProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F40E60F44946D0A77AD57B27 /* ProtocolTests.swift */; };
-		2586A5DF06C410B3DF5269BC /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D79553F7A35F045451144D /* ConnectionView.swift */; };
-		2F9C8AEE268F0AD970CB16CC /* SuggestionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */; };
-		3273CBC954687BE5375E258E /* BridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EDE49D5046EE2366A0FF40 /* BridgeClient.swift */; };
-		4599765F05D5E9E9831A2974 /* SessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1FA77CD75D691E644841093 /* SessionsView.swift */; };
-		4AB13387D7B418474153407C /* BridgeClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35FD9A7F792B3B5BE75ECF5D /* BridgeClientTests.swift */; };
-		524883C2ED762EEAE3CE95C0 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EE652E751C8D2E4F10FDD50 /* ComposerView.swift */; };
-		5C74CBDF1C1CD8BC589EA885 /* Suggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A872C5EA110C28BB414C14 /* Suggestions.swift */; };
-		61AA8EDD80EC301C17C28AE2 /* NotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EF1B5403ABDE81812E24610 /* NotificationTests.swift */; };
-		745B422EEAAAA0783CB6CD5F /* FakeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */; };
-		7CB9611764B9AE46E0EA4359 /* PiMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6823103B65B8BAAE57AABB52 /* PiMobileApp.swift */; };
-		87EF2C70AC20EE7C14FDF691 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */; };
-		931949D2158ED8602B7EE894 /* ConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB0719687016E1D6C1517EE /* ConnectionStore.swift */; };
-		9682DC161B45E2B0E828A2EA /* MarkdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55C1D2C5CF513C4412BB309C /* MarkdownTests.swift */; };
-		9DDE9AF16BBC858CCADC758A /* BridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C52994EACF78C7101A20C7 /* BridgeProtocol.swift */; };
-		C33C9D10A53D1B5D1580F83A /* ConnectionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7797D453BCDAFB9100E78D /* ConnectionStoreTests.swift */; };
-		CD2A83C65FE1A962EEC36CF5 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = B85E68D53450A36745BE8651 /* Notifications.swift */; };
-		E337B2661ADD489288FE28E1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BD921047ECEB9467F7EA7D85 /* Assets.xcassets */; };
-		E918904CD4251598A79549B8 /* BridgeCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF01800983A9B7F9DE9EA526 /* BridgeCommandTests.swift */; };
-		EB283836A97F118AA46A7F53 /* Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 664C7BC345BE89BB7C52D78C /* Markdown.swift */; };
-		F6F691179AFD4952E8C0B8FA /* ModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A0C40260892F3C60295199 /* ModelsView.swift */; };
+		019AFAA024284C248F102B90 /* PiMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 152218D96E162DFB2E15C8F4 /* PiMobileApp.swift */; };
+		07B6231E0EBDEB0FA0C8279E /* PairingScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7246698BAC607059B2B0BB3C /* PairingScanner.swift */; };
+		09604782C51012FD65176914 /* MarkdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B82286688A03C5A1733E436 /* MarkdownTests.swift */; };
+		1F2D8B9C073E42E09ED7E3A4 /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689ED32C61A2E6FF82830EC8 /* ConnectionView.swift */; };
+		238C1613EC3BF70473E99D91 /* BridgeProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40A3D77441C691F5698193B /* BridgeProtocol.swift */; };
+		27BA1A204DA23D2355AFCFAF /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42587727183BC81882C62A3F /* TranscriptView.swift */; };
+		34F6B198385C6D23F74A185C /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 264338A4F5C372A5F7B72BAB /* ComposerView.swift */; };
+		41CC11B2DE9D7D2FED87115D /* SuggestionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55694F19D9A969C8543A86B /* SuggestionsTests.swift */; };
+		4A6B88F328760D1045961A3D /* ConnectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A859149B0A107AF2DF7094 /* ConnectionStore.swift */; };
+		4A757BF1C7F23E225B693320 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 785030917FC093F04EE4987E /* Notifications.swift */; };
+		6342F5CB4BF3948404B3268C /* ProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78649E1B41ABEC4F1C8EF8A1 /* ProtocolTests.swift */; };
+		6E624A13A2B7189219163A73 /* BridgeClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D475249B2ADE6BF18912F94F /* BridgeClientTests.swift */; };
+		74B2C8112C04F85BDEFA42FF /* Suggestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A675AA929F79894FC90AEC /* Suggestions.swift */; };
+		8AD351709F099F0411DA8247 /* SessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B77D83AF4FAC13BBE5D4A69D /* SessionsView.swift */; };
+		912E55625094C0323330D185 /* NotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197ED1855D743B63D4CAD160 /* NotificationTests.swift */; };
+		9EF014D515A1B35CCCDAF55A /* ConnectionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064F301DDF5295C55AB27DEB /* ConnectionStoreTests.swift */; };
+		A1B88F5DEE7973DCC61459CF /* BridgeCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEB3566BC10ACC3AED087A5 /* BridgeCommandTests.swift */; };
+		A4D2E0EB0FB95B494C66DAA9 /* TranscriptSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 087C436C7C0681AA345B156D /* TranscriptSyncTests.swift */; };
+		A5F591382B623B9028A91B25 /* ModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC632B4F10DE026F16A4B475 /* ModelsView.swift */; };
+		AA358E3EE6BE15977627ABC5 /* Markdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61B9F4E0BE7F339E73BC2CAD /* Markdown.swift */; };
+		B4BC6792FEE2F80844A59C5C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20F53A2403ED17564C0B8BD /* Assets.xcassets */; };
+		BBC134762AF0644C661BDC7D /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D8DA152691A33978E7D962 /* Transcript.swift */; };
+		BEBEF78E52C44C7F6C84526A /* BridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DFB8845437F3632CD6FC8D9 /* BridgeClient.swift */; };
+		CFEC1A5ECA48F46C65F7CAA0 /* FakeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26E00721209CDB79D268FAF5 /* FakeBridge.swift */; };
+		EE252E7455FE15786C523EBC /* PairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD9EFD6B4E3DBD0BB570ADC0 /* PairingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		A737060F97EFD43EEC1B86A1 /* PBXContainerItemProxy */ = {
+		665AEFC425F0D7F3F6624EF1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = DDF66FE25BD124762970A057 /* Project object */;
+			containerPortal = 8D62D107CA51A1CE017CFF32 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = B189B7E7EBC195F493A6543E;
+			remoteGlobalIDString = 050C7E7564C104A53BF1B9D4;
 			remoteInfo = PiMobile;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		2D9AF9FE9CC9038B8E2D475A /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
-		35FD9A7F792B3B5BE75ECF5D /* BridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClientTests.swift; sourceTree = "<group>"; };
-		3EE652E751C8D2E4F10FDD50 /* ComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerView.swift; sourceTree = "<group>"; };
-		3EF1B5403ABDE81812E24610 /* NotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationTests.swift; sourceTree = "<group>"; };
-		55C1D2C5CF513C4412BB309C /* MarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTests.swift; sourceTree = "<group>"; };
-		57A872C5EA110C28BB414C14 /* Suggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Suggestions.swift; sourceTree = "<group>"; };
-		5A7797D453BCDAFB9100E78D /* ConnectionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStoreTests.swift; sourceTree = "<group>"; };
-		664C7BC345BE89BB7C52D78C /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
-		664DA1BB897EB216FD716D97 /* PiMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PiMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		6823103B65B8BAAE57AABB52 /* PiMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMobileApp.swift; sourceTree = "<group>"; };
-		72D79553F7A35F045451144D /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
-		A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
-		B1FA77CD75D691E644841093 /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
-		B6821A3F3F700605BE20AD43 /* TranscriptSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptSyncTests.swift; sourceTree = "<group>"; };
-		B85E68D53450A36745BE8651 /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
-		BD921047ECEB9467F7EA7D85 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBridge.swift; sourceTree = "<group>"; };
-		D4A0C40260892F3C60295199 /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
-		ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionsTests.swift; sourceTree = "<group>"; };
-		F1033CE21B96DC349C1B6D25 /* PiMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PiMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		F40E60F44946D0A77AD57B27 /* ProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolTests.swift; sourceTree = "<group>"; };
-		F5C52994EACF78C7101A20C7 /* BridgeProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeProtocol.swift; sourceTree = "<group>"; };
-		F6EDE49D5046EE2366A0FF40 /* BridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClient.swift; sourceTree = "<group>"; };
-		FAB0719687016E1D6C1517EE /* ConnectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStore.swift; sourceTree = "<group>"; };
-		FF01800983A9B7F9DE9EA526 /* BridgeCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeCommandTests.swift; sourceTree = "<group>"; };
+		02A675AA929F79894FC90AEC /* Suggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Suggestions.swift; sourceTree = "<group>"; };
+		064F301DDF5295C55AB27DEB /* ConnectionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStoreTests.swift; sourceTree = "<group>"; };
+		087C436C7C0681AA345B156D /* TranscriptSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptSyncTests.swift; sourceTree = "<group>"; };
+		0B82286688A03C5A1733E436 /* MarkdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTests.swift; sourceTree = "<group>"; };
+		11557EAD80DEBB13B43A4E7D /* PiMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = PiMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		152218D96E162DFB2E15C8F4 /* PiMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiMobileApp.swift; sourceTree = "<group>"; };
+		197ED1855D743B63D4CAD160 /* NotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationTests.swift; sourceTree = "<group>"; };
+		264338A4F5C372A5F7B72BAB /* ComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerView.swift; sourceTree = "<group>"; };
+		26E00721209CDB79D268FAF5 /* FakeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBridge.swift; sourceTree = "<group>"; };
+		42587727183BC81882C62A3F /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
+		61B9F4E0BE7F339E73BC2CAD /* Markdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Markdown.swift; sourceTree = "<group>"; };
+		689ED32C61A2E6FF82830EC8 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		68D8DA152691A33978E7D962 /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
+		7246698BAC607059B2B0BB3C /* PairingScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanner.swift; sourceTree = "<group>"; };
+		785030917FC093F04EE4987E /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
+		78649E1B41ABEC4F1C8EF8A1 /* ProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolTests.swift; sourceTree = "<group>"; };
+		8DFB8845437F3632CD6FC8D9 /* BridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClient.swift; sourceTree = "<group>"; };
+		A20F53A2403ED17564C0B8BD /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A40A3D77441C691F5698193B /* BridgeProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeProtocol.swift; sourceTree = "<group>"; };
+		A55694F19D9A969C8543A86B /* SuggestionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionsTests.swift; sourceTree = "<group>"; };
+		AD081B39DCD5FB1D01CE903D /* PiMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PiMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AD9EFD6B4E3DBD0BB570ADC0 /* PairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingTests.swift; sourceTree = "<group>"; };
+		B77D83AF4FAC13BBE5D4A69D /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
+		BC632B4F10DE026F16A4B475 /* ModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsView.swift; sourceTree = "<group>"; };
+		D0A859149B0A107AF2DF7094 /* ConnectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStore.swift; sourceTree = "<group>"; };
+		D475249B2ADE6BF18912F94F /* BridgeClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClientTests.swift; sourceTree = "<group>"; };
+		FEEB3566BC10ACC3AED087A5 /* BridgeCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeCommandTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		41F889DC3BC5A06BBA270774 /* Products */ = {
+		899871432B71CEE2C14787F9 = {
 			isa = PBXGroup;
 			children = (
-				664DA1BB897EB216FD716D97 /* PiMobile.app */,
-				F1033CE21B96DC349C1B6D25 /* PiMobileTests.xctest */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		7F6FEA4E2968C4CA7C05B6C9 = {
-			isa = PBXGroup;
-			children = (
-				E36C6F86036996BB761A349B /* PiMobile */,
-				F3BD87052FD9D01D60819DB9 /* PiMobileTests */,
-				41F889DC3BC5A06BBA270774 /* Products */,
+				8B5B2B440C425A43136C493C /* PiMobile */,
+				B0096A64B0574F68FBD97B15 /* PiMobileTests */,
+				B717F4A34763F12DAC8A5114 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		E36C6F86036996BB761A349B /* PiMobile */ = {
+		8B5B2B440C425A43136C493C /* PiMobile */ = {
 			isa = PBXGroup;
 			children = (
-				BD921047ECEB9467F7EA7D85 /* Assets.xcassets */,
-				F6EDE49D5046EE2366A0FF40 /* BridgeClient.swift */,
-				F5C52994EACF78C7101A20C7 /* BridgeProtocol.swift */,
-				3EE652E751C8D2E4F10FDD50 /* ComposerView.swift */,
-				FAB0719687016E1D6C1517EE /* ConnectionStore.swift */,
-				72D79553F7A35F045451144D /* ConnectionView.swift */,
-				664C7BC345BE89BB7C52D78C /* Markdown.swift */,
-				D4A0C40260892F3C60295199 /* ModelsView.swift */,
-				B85E68D53450A36745BE8651 /* Notifications.swift */,
-				6823103B65B8BAAE57AABB52 /* PiMobileApp.swift */,
-				B1FA77CD75D691E644841093 /* SessionsView.swift */,
-				57A872C5EA110C28BB414C14 /* Suggestions.swift */,
-				2D9AF9FE9CC9038B8E2D475A /* Transcript.swift */,
-				A76DBB1F5582212AF0CB5EE6 /* TranscriptView.swift */,
+				A20F53A2403ED17564C0B8BD /* Assets.xcassets */,
+				8DFB8845437F3632CD6FC8D9 /* BridgeClient.swift */,
+				A40A3D77441C691F5698193B /* BridgeProtocol.swift */,
+				264338A4F5C372A5F7B72BAB /* ComposerView.swift */,
+				D0A859149B0A107AF2DF7094 /* ConnectionStore.swift */,
+				689ED32C61A2E6FF82830EC8 /* ConnectionView.swift */,
+				61B9F4E0BE7F339E73BC2CAD /* Markdown.swift */,
+				BC632B4F10DE026F16A4B475 /* ModelsView.swift */,
+				785030917FC093F04EE4987E /* Notifications.swift */,
+				7246698BAC607059B2B0BB3C /* PairingScanner.swift */,
+				152218D96E162DFB2E15C8F4 /* PiMobileApp.swift */,
+				B77D83AF4FAC13BBE5D4A69D /* SessionsView.swift */,
+				02A675AA929F79894FC90AEC /* Suggestions.swift */,
+				68D8DA152691A33978E7D962 /* Transcript.swift */,
+				42587727183BC81882C62A3F /* TranscriptView.swift */,
 			);
 			path = PiMobile;
 			sourceTree = "<group>";
 		};
-		F3BD87052FD9D01D60819DB9 /* PiMobileTests */ = {
+		B0096A64B0574F68FBD97B15 /* PiMobileTests */ = {
 			isa = PBXGroup;
 			children = (
-				35FD9A7F792B3B5BE75ECF5D /* BridgeClientTests.swift */,
-				FF01800983A9B7F9DE9EA526 /* BridgeCommandTests.swift */,
-				5A7797D453BCDAFB9100E78D /* ConnectionStoreTests.swift */,
-				BDDC7511D60ABC5AAB06AFB0 /* FakeBridge.swift */,
-				55C1D2C5CF513C4412BB309C /* MarkdownTests.swift */,
-				3EF1B5403ABDE81812E24610 /* NotificationTests.swift */,
-				F40E60F44946D0A77AD57B27 /* ProtocolTests.swift */,
-				ED74DB94215E5BBBBEFB96D4 /* SuggestionsTests.swift */,
-				B6821A3F3F700605BE20AD43 /* TranscriptSyncTests.swift */,
+				D475249B2ADE6BF18912F94F /* BridgeClientTests.swift */,
+				FEEB3566BC10ACC3AED087A5 /* BridgeCommandTests.swift */,
+				064F301DDF5295C55AB27DEB /* ConnectionStoreTests.swift */,
+				26E00721209CDB79D268FAF5 /* FakeBridge.swift */,
+				0B82286688A03C5A1733E436 /* MarkdownTests.swift */,
+				197ED1855D743B63D4CAD160 /* NotificationTests.swift */,
+				AD9EFD6B4E3DBD0BB570ADC0 /* PairingTests.swift */,
+				78649E1B41ABEC4F1C8EF8A1 /* ProtocolTests.swift */,
+				A55694F19D9A969C8543A86B /* SuggestionsTests.swift */,
+				087C436C7C0681AA345B156D /* TranscriptSyncTests.swift */,
 			);
 			path = PiMobileTests;
+			sourceTree = "<group>";
+		};
+		B717F4A34763F12DAC8A5114 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				11557EAD80DEBB13B43A4E7D /* PiMobile.app */,
+				AD081B39DCD5FB1D01CE903D /* PiMobileTests.xctest */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		874273959A83F051C704DD7D /* PiMobileTests */ = {
+		050C7E7564C104A53BF1B9D4 /* PiMobile */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F7237DDC8595B079320AF9AF /* Build configuration list for PBXNativeTarget "PiMobileTests" */;
+			buildConfigurationList = 1F154155FA8EEC8EF8A70485 /* Build configuration list for PBXNativeTarget "PiMobile" */;
 			buildPhases = (
-				A7169BD4F6553DD2ACF4FB6F /* Sources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				9F9156D3D2D217BB333C9337 /* PBXTargetDependency */,
-			);
-			name = PiMobileTests;
-			packageProductDependencies = (
-			);
-			productName = PiMobileTests;
-			productReference = F1033CE21B96DC349C1B6D25 /* PiMobileTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		B189B7E7EBC195F493A6543E /* PiMobile */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = BAAAC51F27D692E9822C4667 /* Build configuration list for PBXNativeTarget "PiMobile" */;
-			buildPhases = (
-				E732C6D646BF2EE9C73D231F /* Sources */,
-				86B9571124EE6AF8988EDFD6 /* Resources */,
+				7CA1628F6EC8620969BF28F2 /* Sources */,
+				0C9DFD60B6C572DF969A28E2 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -162,100 +150,196 @@
 			packageProductDependencies = (
 			);
 			productName = PiMobile;
-			productReference = 664DA1BB897EB216FD716D97 /* PiMobile.app */;
+			productReference = 11557EAD80DEBB13B43A4E7D /* PiMobile.app */;
 			productType = "com.apple.product-type.application";
+		};
+		1140A95E5EF06E3D1E99951C /* PiMobileTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 83A75749E09FB57FA34C3889 /* Build configuration list for PBXNativeTarget "PiMobileTests" */;
+			buildPhases = (
+				096818C00941C94BB30B27BC /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				06511B4757373EE8B0BFEBB4 /* PBXTargetDependency */,
+			);
+			name = PiMobileTests;
+			packageProductDependencies = (
+			);
+			productName = PiMobileTests;
+			productReference = AD081B39DCD5FB1D01CE903D /* PiMobileTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		DDF66FE25BD124762970A057 /* Project object */ = {
+		8D62D107CA51A1CE017CFF32 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					050C7E7564C104A53BF1B9D4 = {
+						DevelopmentTeam = 4333J2693Y;
+					};
+					1140A95E5EF06E3D1E99951C = {
+						DevelopmentTeam = 4333J2693Y;
+					};
 				};
 			};
-			buildConfigurationList = A37742351247BCE00374F84F /* Build configuration list for PBXProject "PiMobile" */;
+			buildConfigurationList = D1E0A6E405F21BAE2FF5DD57 /* Build configuration list for PBXProject "PiMobile" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				Base,
 				en,
 			);
-			mainGroup = 7F6FEA4E2968C4CA7C05B6C9;
+			mainGroup = 899871432B71CEE2C14787F9;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 41F889DC3BC5A06BBA270774 /* Products */;
+			productRefGroup = B717F4A34763F12DAC8A5114 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				B189B7E7EBC195F493A6543E /* PiMobile */,
-				874273959A83F051C704DD7D /* PiMobileTests */,
+				050C7E7564C104A53BF1B9D4 /* PiMobile */,
+				1140A95E5EF06E3D1E99951C /* PiMobileTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		86B9571124EE6AF8988EDFD6 /* Resources */ = {
+		0C9DFD60B6C572DF969A28E2 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E337B2661ADD489288FE28E1 /* Assets.xcassets in Resources */,
+				B4BC6792FEE2F80844A59C5C /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A7169BD4F6553DD2ACF4FB6F /* Sources */ = {
+		096818C00941C94BB30B27BC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4AB13387D7B418474153407C /* BridgeClientTests.swift in Sources */,
-				E918904CD4251598A79549B8 /* BridgeCommandTests.swift in Sources */,
-				C33C9D10A53D1B5D1580F83A /* ConnectionStoreTests.swift in Sources */,
-				745B422EEAAAA0783CB6CD5F /* FakeBridge.swift in Sources */,
-				9682DC161B45E2B0E828A2EA /* MarkdownTests.swift in Sources */,
-				61AA8EDD80EC301C17C28AE2 /* NotificationTests.swift in Sources */,
-				1E366D1A3AC96A961528AFB2 /* ProtocolTests.swift in Sources */,
-				2F9C8AEE268F0AD970CB16CC /* SuggestionsTests.swift in Sources */,
-				0E0BE9AD6D5FF492BA23188E /* TranscriptSyncTests.swift in Sources */,
+				6E624A13A2B7189219163A73 /* BridgeClientTests.swift in Sources */,
+				A1B88F5DEE7973DCC61459CF /* BridgeCommandTests.swift in Sources */,
+				9EF014D515A1B35CCCDAF55A /* ConnectionStoreTests.swift in Sources */,
+				CFEC1A5ECA48F46C65F7CAA0 /* FakeBridge.swift in Sources */,
+				09604782C51012FD65176914 /* MarkdownTests.swift in Sources */,
+				912E55625094C0323330D185 /* NotificationTests.swift in Sources */,
+				EE252E7455FE15786C523EBC /* PairingTests.swift in Sources */,
+				6342F5CB4BF3948404B3268C /* ProtocolTests.swift in Sources */,
+				41CC11B2DE9D7D2FED87115D /* SuggestionsTests.swift in Sources */,
+				A4D2E0EB0FB95B494C66DAA9 /* TranscriptSyncTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E732C6D646BF2EE9C73D231F /* Sources */ = {
+		7CA1628F6EC8620969BF28F2 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3273CBC954687BE5375E258E /* BridgeClient.swift in Sources */,
-				9DDE9AF16BBC858CCADC758A /* BridgeProtocol.swift in Sources */,
-				524883C2ED762EEAE3CE95C0 /* ComposerView.swift in Sources */,
-				931949D2158ED8602B7EE894 /* ConnectionStore.swift in Sources */,
-				2586A5DF06C410B3DF5269BC /* ConnectionView.swift in Sources */,
-				EB283836A97F118AA46A7F53 /* Markdown.swift in Sources */,
-				F6F691179AFD4952E8C0B8FA /* ModelsView.swift in Sources */,
-				CD2A83C65FE1A962EEC36CF5 /* Notifications.swift in Sources */,
-				7CB9611764B9AE46E0EA4359 /* PiMobileApp.swift in Sources */,
-				4599765F05D5E9E9831A2974 /* SessionsView.swift in Sources */,
-				5C74CBDF1C1CD8BC589EA885 /* Suggestions.swift in Sources */,
-				0EEC917DAECED15161C697E1 /* Transcript.swift in Sources */,
-				87EF2C70AC20EE7C14FDF691 /* TranscriptView.swift in Sources */,
+				BEBEF78E52C44C7F6C84526A /* BridgeClient.swift in Sources */,
+				238C1613EC3BF70473E99D91 /* BridgeProtocol.swift in Sources */,
+				34F6B198385C6D23F74A185C /* ComposerView.swift in Sources */,
+				4A6B88F328760D1045961A3D /* ConnectionStore.swift in Sources */,
+				1F2D8B9C073E42E09ED7E3A4 /* ConnectionView.swift in Sources */,
+				AA358E3EE6BE15977627ABC5 /* Markdown.swift in Sources */,
+				A5F591382B623B9028A91B25 /* ModelsView.swift in Sources */,
+				4A757BF1C7F23E225B693320 /* Notifications.swift in Sources */,
+				07B6231E0EBDEB0FA0C8279E /* PairingScanner.swift in Sources */,
+				019AFAA024284C248F102B90 /* PiMobileApp.swift in Sources */,
+				8AD351709F099F0411DA8247 /* SessionsView.swift in Sources */,
+				74B2C8112C04F85BDEFA42FF /* Suggestions.swift in Sources */,
+				BBC134762AF0644C661BDC7D /* Transcript.swift in Sources */,
+				27BA1A204DA23D2355AFCFAF /* TranscriptView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		9F9156D3D2D217BB333C9337 /* PBXTargetDependency */ = {
+		06511B4757373EE8B0BFEBB4 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = B189B7E7EBC195F493A6543E /* PiMobile */;
-			targetProxy = A737060F97EFD43EEC1B86A1 /* PBXContainerItemProxy */;
+			target = 050C7E7564C104A53BF1B9D4 /* PiMobile */;
+			targetProxy = 665AEFC425F0D7F3F6624EF1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		542FDF1C6948E1471DA448AB /* Debug */ = {
+		34384FFE628BF3EE8D835F85 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_KEY_CFBundleDisplayName = "Pi Mobile";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan the QR code shown by the bridge to log in.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobile;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		4BC4E24AA2B7E87EA94F5764 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_KEY_CFBundleDisplayName = "Pi Mobile";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan the QR code shown by the bridge to log in.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobile;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		81FE3A87D302C5BFFA00DF45 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobileTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PiMobile.app/PiMobile";
+			};
+			name = Debug;
+		};
+		8FF4BD8BC2EEA217EAF74E27 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobileTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PiMobile.app/PiMobile";
+			};
+			name = Release;
+		};
+		A8B8E6429EA734C42574450B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -290,6 +374,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 4333J2693Y;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -319,75 +404,7 @@
 			};
 			name = Debug;
 		};
-		7092684B34121625A6B42FC7 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Pi Mobile";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobile;
-				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
-		9F40B712C968F94A594473FB /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Pi Mobile";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobile;
-				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		AE78C9709D9C167713A4B6DE /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobileTests;
-				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PiMobile.app/PiMobile";
-			};
-			name = Release;
-		};
-		BE4FC4895079CAF96F6826A0 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.timhilt.PiMobileTests;
-				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PiMobile.app/PiMobile";
-			};
-			name = Debug;
-		};
-		D9852FFA415BDBA8EEE4915C /* Release */ = {
+		E4BC1C5030BC31D134DE5A8E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -422,6 +439,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 4333J2693Y;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -447,34 +465,34 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A37742351247BCE00374F84F /* Build configuration list for PBXProject "PiMobile" */ = {
+		1F154155FA8EEC8EF8A70485 /* Build configuration list for PBXNativeTarget "PiMobile" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				542FDF1C6948E1471DA448AB /* Debug */,
-				D9852FFA415BDBA8EEE4915C /* Release */,
+				4BC4E24AA2B7E87EA94F5764 /* Debug */,
+				34384FFE628BF3EE8D835F85 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		BAAAC51F27D692E9822C4667 /* Build configuration list for PBXNativeTarget "PiMobile" */ = {
+		83A75749E09FB57FA34C3889 /* Build configuration list for PBXNativeTarget "PiMobileTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				9F40B712C968F94A594473FB /* Debug */,
-				7092684B34121625A6B42FC7 /* Release */,
+				81FE3A87D302C5BFFA00DF45 /* Debug */,
+				8FF4BD8BC2EEA217EAF74E27 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		F7237DDC8595B079320AF9AF /* Build configuration list for PBXNativeTarget "PiMobileTests" */ = {
+		D1E0A6E405F21BAE2FF5DD57 /* Build configuration list for PBXProject "PiMobile" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				BE4FC4895079CAF96F6826A0 /* Debug */,
-				AE78C9709D9C167713A4B6DE /* Release */,
+				A8B8E6429EA734C42574450B /* Debug */,
+				E4BC1C5030BC31D134DE5A8E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = DDF66FE25BD124762970A057 /* Project object */;
+	rootObject = 8D62D107CA51A1CE017CFF32 /* Project object */;
 }

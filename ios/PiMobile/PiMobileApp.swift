@@ -13,13 +13,19 @@ struct PiMobileApp: App {
   /// Settle notifications stream in only while the app is active (no APNs in v1).
   private var notificationTopic: NtfyTopic? { scenePhase == .active ? client.ntfy : nil }
 
+  /// Saves a scanned config and logs in with it.
+  private func pair(_ config: BridgeConfig) {
+    try? store.save(config)
+    client.connect(to: config)
+  }
+
   var body: some Scene {
     WindowGroup {
       TabView(selection: $tab) {
-        TranscriptView(client: client)
+        TranscriptView(client: client, onPair: pair)
           .tabItem { Label("Transcript", systemImage: "text.bubble") }
           .tag(Tab.transcript)
-        ConnectionView(client: client, store: store)
+        ConnectionView(client: client, store: store, onPair: pair)
           .tabItem { Label("Connection", systemImage: "network") }
           .tag(Tab.connection)
       }

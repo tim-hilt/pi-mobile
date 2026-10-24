@@ -9,6 +9,19 @@ struct BridgeConfig: Codable, Equatable, Sendable {
   let token: String
 }
 
+extension BridgeConfig {
+  /// Reads the bridge's pairing QR code (`pimobile://connect?url=…&token=…`); nil for anything else.
+  init?(pairingURL: URL) {
+    guard pairingURL.scheme == "pimobile", pairingURL.host == "connect",
+      let items = URLComponents(url: pairingURL, resolvingAgainstBaseURL: false)?.queryItems,
+      let address = items.first(where: { $0.name == "url" })?.value,
+      let url = URL(string: address), ["ws", "wss"].contains(url.scheme), url.host != nil,
+      let token = items.first(where: { $0.name == "token" })?.value, !token.isEmpty
+    else { return nil }
+    self.init(url: url, token: token)
+  }
+}
+
 enum ConnectionState: Equatable, Sendable {
   /// Not connected: never connected, disconnected, unreachable, or dropped.
   case offline

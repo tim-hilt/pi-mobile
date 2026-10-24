@@ -3,7 +3,10 @@ import SwiftUI
 /// The synced conversation, newest at the bottom, with the composer and the session's status below it.
 struct TranscriptView: View {
   let client: BridgeClient
+  /// Called with the config from a scanned pairing QR code.
+  let onPair: (BridgeConfig) -> Void
 
+  @State private var showingScanner = false
   @State private var showingSessions = false
   @State private var showingModels = false
 
@@ -25,13 +28,21 @@ struct TranscriptView: View {
       }
       .sheet(isPresented: $showingSessions) { SessionsView(client: client) }
       .sheet(isPresented: $showingModels) { ModelsView(client: client) }
+      .sheet(isPresented: $showingScanner) { PairingScanner(onScan: onPair) }
     }
   }
 
   @ViewBuilder private var conversation: some View {
     let transcript = client.transcript
     if client.state != .connected && transcript.sessionId == nil {
-      ContentUnavailableView("Not connected", systemImage: "network.slash")
+      ContentUnavailableView {
+        Label("Not connected", systemImage: "network.slash")
+      } description: {
+        Text("Run the bridge on your Mac and scan the QR code it prints.")
+      } actions: {
+        Button("Scan QR Code to Log In", systemImage: "qrcode.viewfinder") { showingScanner = true }
+          .buttonStyle(.borderedProminent)
+      }
     } else if transcript.sessionId == nil {
       ContentUnavailableView {
         Label("No session joined", systemImage: "terminal")

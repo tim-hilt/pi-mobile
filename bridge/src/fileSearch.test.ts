@@ -2,8 +2,14 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeAll, expect, test } from "vitest";
 import { searchWorkspace } from "./fileSearch.js";
+
+// Git hooks (pre-commit) export GIT_INDEX_FILE etc., which would point test repos at this one.
+beforeAll(() => {
+  for (const name of Object.keys(process.env))
+    if (name.startsWith("GIT_")) delete process.env[name];
+});
 
 const dirs: string[] = [];
 afterEach(() => {

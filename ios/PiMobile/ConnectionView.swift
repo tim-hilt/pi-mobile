@@ -4,10 +4,13 @@ import SwiftUI
 struct ConnectionView: View {
   let client: BridgeClient
   let store: ConnectionStore
+  /// Called with the config from a scanned pairing QR code.
+  let onPair: (BridgeConfig) -> Void
 
   @State private var address = ""
   @State private var token = ""
   @State private var saveError: String?
+  @State private var showingScanner = false
 
   private var config: BridgeConfig? {
     guard let url = URL(string: address.trimmingCharacters(in: .whitespaces)),
@@ -18,6 +21,9 @@ struct ConnectionView: View {
 
   var body: some View {
     Form {
+      Section {
+        Button("Scan QR Code to Log In", systemImage: "qrcode.viewfinder") { showingScanner = true }
+      }
       Section("Bridge") {
         TextField("wss://host", text: $address)
           .textContentType(.URL)
@@ -36,6 +42,13 @@ struct ConnectionView: View {
           Text("\(error.code): \(error.message)").font(.footnote)
         }
         if let saveError { Text(saveError).font(.footnote) }
+      }
+    }
+    .sheet(isPresented: $showingScanner) {
+      PairingScanner { config in
+        address = config.url.absoluteString
+        token = config.token
+        onPair(config)
       }
     }
     .task {

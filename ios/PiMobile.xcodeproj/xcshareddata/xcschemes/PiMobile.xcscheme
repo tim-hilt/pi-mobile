@@ -15,7 +15,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "B189B7E7EBC195F493A6543E"
+               BlueprintIdentifier = "050C7E7564C104A53BF1B9D4"
                BuildableName = "PiMobile.app"
                BlueprintName = "PiMobile"
                ReferencedContainer = "container:PiMobile.xcodeproj">
@@ -32,7 +32,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "B189B7E7EBC195F493A6543E"
+            BlueprintIdentifier = "050C7E7564C104A53BF1B9D4"
             BuildableName = "PiMobile.app"
             BlueprintName = "PiMobile"
             ReferencedContainer = "container:PiMobile.xcodeproj">
@@ -44,7 +44,7 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "874273959A83F051C704DD7D"
+               BlueprintIdentifier = "1140A95E5EF06E3D1E99951C"
                BuildableName = "PiMobileTests.xctest"
                BlueprintName = "PiMobileTests"
                ReferencedContainer = "container:PiMobile.xcodeproj">
@@ -68,7 +68,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "B189B7E7EBC195F493A6543E"
+            BlueprintIdentifier = "050C7E7564C104A53BF1B9D4"
             BuildableName = "PiMobile.app"
             BlueprintName = "PiMobile"
             ReferencedContainer = "container:PiMobile.xcodeproj">
@@ -85,7 +85,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "B189B7E7EBC195F493A6543E"
+            BlueprintIdentifier = "050C7E7564C104A53BF1B9D4"
             BuildableName = "PiMobile.app"
             BlueprintName = "PiMobile"
             ReferencedContainer = "container:PiMobile.xcodeproj">

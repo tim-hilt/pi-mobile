@@ -9,9 +9,9 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 build="$root/ios/build"
 
 cd "$root/ios"
-xcodebuild build -project PiClient.xcodeproj -scheme PiClient -configuration "$config" \
+xcodebuild build -project PiMobile.xcodeproj -scheme PiMobile -configuration "$config" \
   -destination "platform=iOS,name=$device" -derivedDataPath "$build" -allowProvisioningUpdates
 
 xcrun devicectl device install app --device "$device" \
-  "$build/Build/Products/$config-iphoneos/PiClient.app"
-xcrun devicectl device process launch --device "$device" dev.timhilt.PiClient
+  "$build/Build/Products/$config-iphoneos/PiMobile.app"
+xcrun devicectl device process launch --device "$device" dev.timhilt.PiMobile

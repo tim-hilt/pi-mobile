@@ -32,12 +32,13 @@ Generate the secrets once, into one file:
 ```sh
 cat > ~/.pi-bridge.env <<EOF
 PI_BRIDGE_TOKEN=$(openssl rand -hex 32)
+PI_BRIDGE_PUBLIC_URL=wss://pi.example.com
 PI_BRIDGE_NTFY_TOPIC=$(openssl rand -hex 16)
 EOF
 chmod 600 ~/.pi-bridge.env
 ```
 
-`PI_BRIDGE_TOKEN` is the auth secret the app needs; drop `PI_BRIDGE_NTFY_TOPIC` to disable notifications. `PI_BRIDGE_PORT` (default 8787) must match the tunnel's service port. Export them to every pi (e.g. in `~/.zshrc`), so the first pi can start the bridge:
+`PI_BRIDGE_TOKEN` is the auth secret the app needs; `PI_BRIDGE_PUBLIC_URL` is the address it reaches the bridge at; drop `PI_BRIDGE_NTFY_TOPIC` to disable notifications. `PI_BRIDGE_PORT` (default 8787) must match the tunnel's service port. Export them to every pi (e.g. in `~/.zshrc`), so the first pi can start the bridge:
 
 ```sh
 set -a; . ~/.pi-bridge.env; set +a
@@ -49,7 +50,7 @@ Self-hosted ntfy: also set `PI_BRIDGE_NTFY_URL`. The app learns the topic from t
 
 ## 3. App
 
-Enter `wss://pi.example.com` and the token in the connection screen.
+On start, the bridge prints a QR code (to `~/.pi/agent/bridge.log` when a pi started it; or run `npm start -w bridge`). Tap **Scan QR Code to Log In** in the app and scan it. The QR code contains the token: don't share it. Manual entry of `wss://pi.example.com` and the token stays available on the Connection tab.
 
 ## Check
 

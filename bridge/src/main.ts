@@ -1,5 +1,6 @@
 import { defaultSocketPath } from "./link.js";
 import { listenForShares } from "./linkGateway.js";
+import { pairingQr } from "./pairing.js";
 import { startBridge } from "./server.js";
 
 /**
@@ -10,7 +11,8 @@ import { startBridge } from "./server.js";
  * Env: `PI_BRIDGE_TOKEN` (required bearer token), `PI_BRIDGE_PORT` (default 8787),
  * `PI_BRIDGE_SOCKET` (default ~/.pi/agent/bridge.sock),
  * `PI_BRIDGE_NTFY_TOPIC` (unguessable topic; settled runs are announced only when set),
- * `PI_BRIDGE_NTFY_URL` (default https://ntfy.sh).
+ * `PI_BRIDGE_NTFY_URL` (default https://ntfy.sh),
+ * `PI_BRIDGE_PUBLIC_URL` (`wss://` address the app reaches; when set, a pairing QR code is printed).
  */
 const token = process.env.PI_BRIDGE_TOKEN;
 if (!token) {
@@ -39,6 +41,10 @@ const shares = await listenForShares(socketPath, bridge.hub);
 console.log(
   `pi bridge listening on ${bridge.host}:${bridge.port}, sharing via ${socketPath}`
 );
+const publicUrl = process.env.PI_BRIDGE_PUBLIC_URL;
+if (publicUrl) {
+  console.log(`Scan with Pi Mobile to log in:\n${pairingQr(publicUrl, token)}`);
+}
 
 const shutdown = async () => {
   await shares.close();
