@@ -56,69 +56,128 @@ const runThrough = (gateway: FakeGateway, stopReason: StopReason) => {
   gateway.emit({ name: "runSettled", stopReason });
 };
 
-test.each<StopReason>(["success", "error", "aborted", "length"])(
-  "a run that settles as %s is posted to the topic",
-  async (stopReason) => {
-    const ntfy = await fakeNtfy();
-    const gateway = await bridgeNotifying({
-      baseUrl: ntfy.baseUrl,
-      topic: "xk3-secret-topic",
-    });
+const ICON = "https://upload.wikimedia.org/wikipedia/commons/8/81/Pi_logo.png";
 
-    runThrough(gateway, stopReason);
-
-    const post = await ntfy.firstPost();
-    expect(post).toMatchObject({ method: "POST", url: "/xk3-secret-topic" });
-    expect(JSON.parse(post.body)).toMatchObject({ stopReason });
-  }
-);
-
-test("the payload carries only the session, stop reason and duration", async () => {
+test("a finished run is published to the topic with the last answer", async () => {
   const ntfy = await fakeNtfy();
   const gateway = await bridgeNotifying({
     baseUrl: ntfy.baseUrl,
-    topic: "t",
+    topic: "xk3",
   });
-  gateway.current = { ...gateway.current, id: "s7", name: "refactor auth" };
+  gateway.current = { ...gateway.current, id: "s7", cwd: "/home/me/leaf" };
   gateway.emit({ name: "runStarted" });
-  gateway.emit({ name: "userMessage", text: "my secret prompt" });
-  gateway.emit({ name: "messageEnd", text: "secret answer", thinking: "" });
-  gateway.emit({
-    name: "runSettled",
-    stopReason: "error",
-    errorMessage: "secret failure detail",
-  });
+  gateway.emit({ name: "messageEnd", text: "first", thinking: "" });
+  gateway.emit({ name: "messageEnd", text: "  **Done.**  ", thinking: "hmm" });
+  gateway.emit({ name: "messageEnd", text: "", thinking: "only thinking" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
 
   const post = await ntfy.firstPost();
 
+  expect(post).toMatchObject({ method: "POST", url: "/" });
   expect(JSON.parse(post.body)).toEqual({
-    sessionId: "s7",
-    sessionName: "refactor auth",
-    stopReason: "error",
-    durationMs: expect.any(Number),
+    topic: "xk3",
+    title: "leaf: Agent Finished",
+    message: "**Done.**",
+    tags: ["robot"],
+    markdown: true,
+    icon: ICON,
+    click: "pimobile://session?id=s7",
   });
 });
 
-test("an unnamed session is announced without a name", async () => {
+test("tapping the notification opens its session in the app", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  gateway.current = { ...gateway.current, id: "a/b c&d" };
+
+  runThrough(gateway, "success");
+
+  const { click } = JSON.parse((await ntfy.firstPost()).body);
+  expect(new URL(click).searchParams.get("id")).toBe("a/b c&d");
+});
+
+test.each<[StopReason, string]>([
+  ["error", "Agent Failed"],
+  ["aborted", "Agent Aborted"],
+  ["length", "Agent Cut Off"],
+])("a run that settles as %s is titled %s", async (stopReason, title) => {
   const ntfy = await fakeNtfy();
   const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
 
-  runThrough(gateway, "success");
+  runThrough(gateway, stopReason);
 
-  const post = await ntfy.firstPost();
-  expect(JSON.parse(post.body)).not.toHaveProperty("sessionName");
+  expect(JSON.parse((await ntfy.firstPost()).body).title).toBe(
+    `work: ${title}`
+  );
 });
 
-test("a base URL with a trailing slash still reaches the topic", async () => {
+test("a named session is titled by its name", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  gateway.current = { ...gateway.current, name: "refactor auth" };
+
+  runThrough(gateway, "success");
+
+  expect(JSON.parse((await ntfy.firstPost()).body).title).toBe(
+    "refactor auth: Agent Finished"
+  );
+});
+
+test("a run without an answer falls back to its error, then a generic message", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({
+    name: "runSettled",
+    stopReason: "error",
+    errorMessage: "rate limited",
+  });
+  runThrough(gateway, "success");
+
+  await ntfy.firstPost();
+  while (ntfy.posts.length < 2) await new Promise((r) => setTimeout(r, 5));
+
+  expect(ntfy.posts.map((p) => JSON.parse(p.body).message)).toEqual([
+    "rate limited",
+    "The agent finished.",
+  ]);
+});
+
+test("an answer from an earlier run is not reported again", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "messageEnd", text: "old answer", thinking: "" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+  runThrough(gateway, "aborted");
+
+  while (ntfy.posts.length < 2) await new Promise((r) => setTimeout(r, 5));
+
+  expect(JSON.parse(ntfy.posts[1]!.body).message).toBe("The agent finished.");
+});
+
+test("a long answer is truncated", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "messageEnd", text: "x".repeat(1500), thinking: "" });
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+
+  const { message } = JSON.parse((await ntfy.firstPost()).body);
+
+  expect(message).toBe(`${"x".repeat(1000)}…`);
+});
+
+test("a base URL with a path still publishes to it", async () => {
   const ntfy = await fakeNtfy();
   const gateway = await bridgeNotifying({
-    baseUrl: `${ntfy.baseUrl}/`,
+    baseUrl: `${ntfy.baseUrl}/ntfy/`,
     topic: "t",
   });
 
   runThrough(gateway, "success");
 
-  expect((await ntfy.firstPost()).url).toBe("/t");
+  expect((await ntfy.firstPost()).url).toBe("/ntfy");
 });
 
 test("an unreachable or failing ntfy never disturbs the bridge", async () => {

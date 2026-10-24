@@ -140,8 +140,6 @@ struct Record: Decodable, Sendable {
     let protocolVersion: Int?
     /// `joinSession`: the share of the session that event `seq`s count in.
     let epoch: String?
-    /// `hello`: where settled runs are announced; absent when the bridge does not announce them.
-    let ntfy: NtfyTopic?
     /// `listSkills`.
     let skills: [Skill]?
     /// `listModels`.
@@ -155,12 +153,11 @@ struct Record: Decodable, Sendable {
     let stats: SessionStats?
 
     init(
-      protocolVersion: Int? = nil, epoch: String? = nil, ntfy: NtfyTopic? = nil, skills: [Skill]? = nil,
+      protocolVersion: Int? = nil, epoch: String? = nil, skills: [Skill]? = nil,
       models: [ModelInfo]? = nil, files: [String]? = nil, sessions: [LiveSession]? = nil, joinedId: String? = nil, stats: SessionStats? = nil
     ) {
       self.protocolVersion = protocolVersion
       self.epoch = epoch
-      self.ntfy = ntfy
       self.skills = skills
       self.models = models
       self.files = files
@@ -274,7 +271,7 @@ enum JSONValue: Codable, Equatable, Sendable {
 
 extension Record.CommandResult: Decodable {
   private enum CodingKeys: String, CodingKey {
-    case protocolVersion, epoch, ntfy, skills, models, files, sessions, joinedId
+    case protocolVersion, epoch, skills, models, files, sessions, joinedId
   }
 
   init(from decoder: Decoder) throws {
@@ -282,7 +279,6 @@ extension Record.CommandResult: Decodable {
     self.init(
       protocolVersion: try values.decodeIfPresent(Int.self, forKey: .protocolVersion),
       epoch: try values.decodeIfPresent(String.self, forKey: .epoch),
-      ntfy: try values.decodeIfPresent(NtfyTopic.self, forKey: .ntfy),
       skills: try values.decodeIfPresent([Skill].self, forKey: .skills),
       models: try values.decodeIfPresent([ModelInfo].self, forKey: .models),
       files: try values.decodeIfPresent([String].self, forKey: .files),

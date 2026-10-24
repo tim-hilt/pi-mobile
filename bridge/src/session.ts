@@ -66,6 +66,8 @@ export class Session {
   private activeAt = new Date();
   /** The assistant message being generated: its deltas so far, not yet in the gateway's history. */
   private streaming: { text: string; thinking: string } | undefined;
+  /** Text of the current run's latest assistant message that had any, for the notifier. */
+  private lastText: string | undefined;
   /** Joined clients; `false` while one waits for its snapshot and gets no events yet. */
   private listeners = new Map<Listener, boolean>();
   private detach: () => void;
@@ -242,11 +244,13 @@ export class Session {
     if (event.name === "runStarted") {
       this.runStartedAt = performance.now();
       this.streaming = undefined;
+      this.lastText = undefined;
     } else if (event.name === "delta") {
       this.streaming ??= { text: "", thinking: "" };
       this.streaming[event.kind] += event.text;
     } else if (event.name === "messageEnd") {
       this.streaming = undefined;
+      if (event.text.trim()) this.lastText = event.text;
     } else if (event.name === "runSettled") {
       const durationMs = Math.round(
         performance.now() - (this.runStartedAt ?? performance.now())
@@ -256,13 +260,16 @@ export class Session {
       this.runs++;
       this.runDurationMs += durationMs;
       Object.assign(data, { durationMs });
-      const { id, name: sessionName } = this.gateway.info();
+      const { id, cwd, name: sessionName } = this.gateway.info();
       this.notifier?.runSettled({
         sessionId: id,
-        ...(sessionName !== undefined && { sessionName }),
+        cwd,
+        sessionName,
         stopReason: event.stopReason,
-        durationMs,
+        errorMessage: event.errorMessage,
+        lastText: this.lastText,
       });
+      this.lastText = undefined;
     }
     const wire = { seq: ++this.seq, name, data };
     this.log.push(wire);

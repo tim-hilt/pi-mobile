@@ -43,14 +43,12 @@ A record that is not valid JSON or not a well-formed `command` → `error` recor
 ## Versioning
 
 - First record after connect: app sends `hello` (`command`, `params: { protocolVersion }`).
-- Bridge answers `result` with `{ protocolVersion, ntfy? }` on success (`ntfy` as in [Notifications](#notifications)), or `error.code = "versionMismatch"` and closes the socket.
+- Bridge answers `result` with `{ protocolVersion }` on success, or `error.code = "versionMismatch"` and closes the socket.
 - Breaking changes bump the integer version; additive fields do not.
 
 ## Notifications
 
-When the bridge is configured with an ntfy topic, it POSTs to `<baseUrl>/<topic>` for every `runSettled`, whatever the `stopReason`, whether or not an app is connected. The body is JSON: `{ sessionId, sessionName?, stopReason, durationMs }` — never transcript content, since the topic is public by obscurity. `sessionName` is the user-given name, absent if none. Delivery failures are logged and otherwise ignored.
-
-The `hello` result carries `ntfy: { baseUrl, topic }` so the app learns the topic from the bridge. While active, the app subscribes to `<baseUrl>/<topic>/ws`, raises a local notification per message (`sessionId` in its `userInfo`), and a tap opens that session (`joinSession`, unless already joined).
+Not part of the protocol: the app raises none. When configured with an ntfy topic, the bridge publishes a push notification for every `runSettled`, whatever the `stopReason`, whether or not an app is connected; the user receives it with the ntfy app. It POSTs ntfy's JSON form to `<baseUrl>`: `{ topic, title, message, tags: ["robot"], markdown: true, icon, click }`. `title` is `<session name or cwd basename>: Agent Finished|Failed|Aborted|Cut Off`; `message` the run's last assistant text (≤ 1000 chars), else its error, else "The agent finished.". `click` is `pimobile://session?id=<sessionId>`: tapping the notification opens the app on that session (`joinSession` once connected, unless already joined). The topic is public by obscurity and the message carries transcript content: keep it unguessable. Delivery failures are logged and otherwise ignored.
 
 Bridge config (env): `PI_BRIDGE_NTFY_TOPIC` (enables it), `PI_BRIDGE_NTFY_URL` (default `https://ntfy.sh`).
 

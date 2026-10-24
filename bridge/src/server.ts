@@ -72,7 +72,7 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) =>
-      serve(ws, pingIntervalMs, hub, ntfy)
+      serve(ws, pingIntervalMs, hub)
     );
   });
 
@@ -100,12 +100,7 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
  * connection is joined to at most one session, which its events and
  * session commands concern.
  */
-function serve(
-  ws: WebSocket,
-  pingIntervalMs: number,
-  hub: SessionHub,
-  ntfy: NtfyConfig | undefined
-): void {
+function serve(ws: WebSocket, pingIntervalMs: number, hub: SessionHub): void {
   let pinger: NodeJS.Timeout | undefined;
   let handshaken = false;
   let joined: { session: Session; leave: () => void } | undefined;
@@ -309,10 +304,7 @@ function serve(
     send({
       type: "result",
       id,
-      result: {
-        protocolVersion: PROTOCOL_VERSION,
-        ...(ntfy && { ntfy }),
-      },
+      result: { protocolVersion: PROTOCOL_VERSION },
     });
     pinger = setInterval(() => ws.ping(), pingIntervalMs);
     return true;

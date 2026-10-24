@@ -58,8 +58,6 @@ final class BridgeClient {
   private(set) var state = ConnectionState.offline
   /// Everything synced from the bridge so far; kept across reconnects to the same bridge.
   private(set) var transcript = Transcript()
-  /// Where the bridge announces settled runs, as of the latest handshake; nil if it does not.
-  private(set) var ntfy: NtfyTopic?
 
   /// Why a command could not be answered.
   enum CommandError: Error, Equatable {
@@ -159,9 +157,9 @@ final class BridgeClient {
     if let latest = try await sessions().sessions.first { try await join(sessionId: latest.id) }
   }
 
-  /// Makes `sessionId` the session on show, once connected (e.g. after launching from a
-  /// notification). Throws `CommandError.notConnected` if the bridge refuses us or stays out of
-  /// reach for 10 s, or the bridge's refusal to join (`unknownSession`).
+  /// Makes `sessionId` the session on show, once connected (e.g. after opening a notification's
+  /// link). Throws `CommandError.notConnected` if the bridge refuses us or stays out of reach for
+  /// 10 s, or the bridge's refusal to join (`unknownSession`).
   func show(sessionId: String) async throws {
     let deadline = ContinuousClock.now + .seconds(10)
     while state != .connected {
@@ -261,7 +259,6 @@ final class BridgeClient {
           if let next = Self.transition(on: record, helloId: helloId) {
             state = next
             if case .failed = next { return .refused }
-            ntfy = record.result?.ntfy
             wasConnected = true
             // Back to the session on show, catching up from where we left it.
             if let id = transcript.sessionId, !transcript.hasEnded {

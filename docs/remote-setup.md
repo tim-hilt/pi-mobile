@@ -46,7 +46,7 @@ set -a; . ~/.pi-bridge.env; set +a
 
 Then enable session sharing as in the [README](../README.md#share-pi-sessions).
 
-Self-hosted ntfy: also set `PI_BRIDGE_NTFY_URL`. The app learns the topic from the bridge handshake; nothing to configure on the phone.
+Notifications come through the [ntfy app](https://apps.apple.com/app/ntfy/id1625396347): subscribe to `$PI_BRIDGE_NTFY_TOPIC` there. Self-hosted ntfy: also set `PI_BRIDGE_NTFY_URL` and add that server in the ntfy app.
 
 ## 3. App
 
@@ -58,4 +58,4 @@ On start, the bridge prints a QR code (to `~/.pi/agent/bridge.log` when a pi sta
 curl -si https://pi.example.com | head -1                 # 401/426 from the bridge, not a Cloudflare error
 ```
 
-Remote demo (cellular, Wi-Fi off): open the app → transcript catches up → send a prompt → it streams → ntfy notification when the run settles. v1 has no APNs: notifications arrive only while the app is in the foreground.
+Remote demo (cellular, Wi-Fi off): open the app → transcript catches up → send a prompt → it streams → ntfy notification when the run settles, also with the app closed.
