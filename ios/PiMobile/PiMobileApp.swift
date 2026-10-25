@@ -20,7 +20,10 @@ struct PiMobileApp: App {
     WindowGroup {
       NavigationStack(path: $path) {
         SessionsView(client: client, onPair: pair)
-          .navigationDestination(for: String.self) { TranscriptView(client: client, sessionId: $0) }
+          // One view per session: a link swapping the shown session must not carry over the composer's
+          // draft and focus. A focused composer, disabled until the new session is joined, dismissed the
+          // keyboard mid-foregrounding and hung layout until the watchdog killed the app.
+          .navigationDestination(for: String.self) { TranscriptView(client: client, sessionId: $0).id($0) }
       }
       .onOpenURL { url in
         switch DeepLink(url: url) {
