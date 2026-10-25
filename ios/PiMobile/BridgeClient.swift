@@ -74,6 +74,7 @@ final class BridgeClient {
   @ObservationIgnored private let reconnectDelay: Duration
 
   private static let maxReconnectDelay = Duration.seconds(30)
+  private static let maxFrameSize = 64 << 20
 
   /// `reconnectDelay` is the wait before the first retry; it doubles per failed attempt.
   init(reconnectDelay: Duration = .seconds(1)) {
@@ -228,6 +229,9 @@ final class BridgeClient {
     var request = URLRequest(url: config.url)
     request.setValue("Bearer \(config.token)", forHTTPHeaderField: "Authorization")
     let socket = URLSession.shared.webSocketTask(with: request)
+    // A snapshot carries the whole session in one frame; the 1 MiB default would drop it and
+    // reconnect forever. The cap only guards against a runaway bridge.
+    socket.maximumMessageSize = Self.maxFrameSize
     socket.resume()
     self.socket = socket
     nextCommandId = 1

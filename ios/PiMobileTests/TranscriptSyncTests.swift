@@ -68,6 +68,21 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(hellos.value?.count == 1)  // nothing on show yet: no rejoin
   }
 
+  @Test func aSnapshotLargerThanURLSessionsDefaultMessageLimitStillArrives() async throws {
+    let output = String(repeating: "x", count: 3 << 20)
+    let (client, bridge, _) = try await connect { _, _, peer in
+      peer.send(ack)
+      peer.send(
+        event(
+          1, "transcript",
+          #"{"running":false,"messages":[{"role":"toolCall","toolCallId":"t1","toolName":"read","output":"\#(output)"}]}"#
+        ))
+    }
+    defer { bridge.stop() }
+
+    await waitUntil("snapshot") { client.transcript.toolCalls.first?.output.count == output.count }
+  }
+
   @Test func deltasAssembleThenMessageEndReplacesThem() async throws {
     let (client, bridge, _) = try await connect { _, _, peer in
       peer.send(ack)
@@ -324,6 +339,20 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(call.command == "cd x\necho hi")
     #expect(call.timeoutSeconds == 30)
     #expect(call.outputTail == "3\n4\n5\n6\n7")
+  }
+
+  @Test(arguments: [
+    ("a\nb", "a\nb"),
+    ("a\n\n\n", "a"),
+    ("1\n\n3\n4\n5\n6\n\n", "\n3\n4\n5\n6"),
+    ("\n\n", ""),
+  ])
+  func theOutputTailSkipsTrailingBlankLinesButKeepsInnerOnes(output: String, tail: String) throws {
+    var transcript = Transcript()
+    let update = #"{"phase":"update","toolCallId":"t1","toolName":"bash","output":"\#(output.replacing("\n", with: "\\n"))"}"#
+    try transcript.apply(frame: event(1, "toolCall", update))
+
+    #expect(try #require(transcript.toolCalls.first).outputTail == tail)
   }
 
   @Test func aToolCallWithoutCommandOrTimeoutHasNeither() throws {

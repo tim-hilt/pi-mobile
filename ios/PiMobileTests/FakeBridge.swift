@@ -25,11 +25,12 @@ nonisolated final class FakeBridge: @unchecked Sendable {
     func drop() { connection.cancel() }
 
     fileprivate func write(opcode: UInt8, payload: Data) {
-      precondition(payload.count < 65536, "fake bridge only sends frames up to 64 KiB")
       let length =
-        payload.count < 126
-        ? Data([UInt8(payload.count)])
-        : Data([126, UInt8(payload.count >> 8), UInt8(payload.count & 0xFF)])
+        switch payload.count {
+        case ..<126: Data([UInt8(payload.count)])
+        case ..<65536: Data([126, UInt8(payload.count >> 8), UInt8(payload.count & 0xFF)])
+        default: Data([127] + (0..<8).reversed().map { UInt8(truncatingIfNeeded: payload.count >> ($0 * 8)) })
+        }
       connection.send(
         content: Data([0x80 | opcode]) + length + payload, completion: .idempotent)
     }

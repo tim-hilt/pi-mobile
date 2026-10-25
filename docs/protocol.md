@@ -113,6 +113,8 @@ Run events, in the order a run emits them:
 | `messageEnd`  | `{ text, thinking }` — the authoritative completed message; replaces its deltas                                                                                                                      |
 | `runSettled`  | `{ stopReason: "success" \| "error" \| "aborted" \| "length", durationMs, errorMessage? }` — pi will not continue on its own                                                                         |
 
+Consecutive `delta`s of one kind, and consecutive `toolCall` `update`s of one call, are coalesced over up to 50 ms: an event may carry several increments, or only the latest output.
+
 `durationMs` is measured by the bridge from `runStarted` to `runSettled`. `runStarted` is sent as soon as pi accepts a prompt. `stopReason` is `error` (with `errorMessage`) when the run's final assistant message failed, `aborted` when it was aborted, `length` when it ended because the model hit its output limit, else `success`; failures a retry recovered from do not count.
 
 `status` `{ model?, provider?, modelName?, thinkingLevel?, thinkingLevels?, contextTokens?, contextWindow?, cost }` — what pi's footer shows, sent whole whenever it changes: `model` the active model's id, `provider` and `modelName` its provider and readable name, `thinkingLevel` how hard it thinks (`off` if it can't) out of its supported `thinkingLevels` (weakest first; all five absent without a model), `contextTokens` how much of its `contextWindow` the context fills (absent while unknown, e.g. right after compaction; both absent without a model), `cost` the whole session's price in USD. Usage counts once a turn ends.

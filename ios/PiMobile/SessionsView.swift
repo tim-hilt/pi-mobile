@@ -19,6 +19,17 @@ struct SessionsView: View {
   }
 
   @ViewBuilder private var content: some View {
+    if client.state == .connected, let sessions = client.sessions, !sessions.isEmpty {
+      List(sessions) { session in
+        NavigationLink(value: session.id) { SessionRow(session: session) }
+      }
+    } else {
+      placeholder.padding(.bottom, raise)
+    }
+  }
+
+  /// What shows instead of the list: why there is none, or that it is coming.
+  @ViewBuilder private var placeholder: some View {
     if case .failed(let error) = client.state {
       ContentUnavailableView {
         Label("Connection failed", systemImage: "exclamationmark.triangle")
@@ -27,18 +38,12 @@ struct SessionsView: View {
       } actions: {
         scanButton
       }
-      .padding(.bottom, raise)
-    } else if client.state == .connected, let sessions = client.sessions, sessions.isEmpty {
+    } else if client.state == .connected, client.sessions != nil {
       // Standalone like the offline state; the bridge pushes new sessions as they start.
       ContentUnavailableView {
         Label("No pi sessions", systemImage: "terminal")
       } description: {
         Text("Start pi on your Mac to see it here.")
-      }
-      .padding(.bottom, raise)
-    } else if client.state == .connected, let sessions = client.sessions {
-      List(sessions) { session in
-        NavigationLink(value: session.id) { SessionRow(session: session) }
       }
     } else if client.state == .offline {
       // Reconnects run silently in the background; the list returns once one succeeds.
@@ -49,13 +54,12 @@ struct SessionsView: View {
       } actions: {
         scanButton
       }
-      .padding(.bottom, raise)
     } else {
       ProgressView("Connecting…")
     }
   }
 
-  /// Lifts the empty states a little above dead center.
+  /// Lifts the placeholders a little above dead center.
   private let raise: CGFloat = 80
 
   private var logo: some View {

@@ -152,11 +152,7 @@ private struct ModelButton: View {
   var body: some View {
     Button(action: action) {
       HStack(spacing: 4) {
-        if let name = status.modelName {
-          Text(name)
-        } else {
-          Text("No model")
-        }
+        Text(status.modelName ?? "No model")
         // Models that can't think have only `off`; no point saying so.
         if let level = status.thinkingLevel, status.thinkingLevels.count > 1 {
           Text(level).foregroundStyle(.secondary)
@@ -252,9 +248,9 @@ private struct SuggestionBar: View {
       }
       VStack(alignment: .leading, spacing: 2) {
         Text(pick.title).lineLimit(1)
-        if pick.isFile, let subtitle = pick.subtitle, !subtitle.isEmpty {
-          Text(subtitle).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-            .truncationMode(pick.isFile ? .head : .tail)  // folders keep their nearest part
+        if let folder = pick.folder, !folder.isEmpty {
+          Text(folder).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            .truncationMode(.head)  // keeps the nearest folders
         }
       }
       Spacer(minLength: 0)
@@ -286,11 +282,8 @@ private extension Suggestions.Pick {
     }
   }
 
-  /// Skill description, or the file's folder.
-  var subtitle: String? {
-    switch self {
-    case .skill(let skill): skill.description
-    case .file(let path): (path as NSString).deletingLastPathComponent
-    }
+  /// The file's folder; nil for a skill.
+  var folder: String? {
+    if case .file(let path) = self { (path as NSString).deletingLastPathComponent } else { nil }
   }
 }

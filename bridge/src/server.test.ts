@@ -264,8 +264,9 @@ test("a prompt streams deltas, message end and run settled in order", async () =
   gateway.emit({ name: "messageEnd", text: "Hello", thinking: "hmm" });
   gateway.emit({ name: "runSettled", stopReason: "success" });
 
+  // A burst of deltas of one kind goes out as one (see session.test.ts).
   const events = [];
-  for (let i = 0; i < 6; i++) events.push(await c.next());
+  for (let i = 0; i < 5; i++) events.push(await c.next());
   expect(events).toEqual([
     { type: "event", seq: 1, name: "runStarted", data: {} },
     {
@@ -278,23 +279,17 @@ test("a prompt streams deltas, message end and run settled in order", async () =
       type: "event",
       seq: 3,
       name: "delta",
-      data: { kind: "text", text: "Hel" },
+      data: { kind: "text", text: "Hello" },
     },
     {
       type: "event",
       seq: 4,
-      name: "delta",
-      data: { kind: "text", text: "lo" },
-    },
-    {
-      type: "event",
-      seq: 5,
       name: "messageEnd",
       data: { text: "Hello", thinking: "hmm" },
     },
     {
       type: "event",
-      seq: 6,
+      seq: 5,
       name: "runSettled",
       data: { stopReason: "success", durationMs: expect.any(Number) },
     },
@@ -467,7 +462,7 @@ test("a snapshot taken mid-run includes the message still streaming", async () =
 
   const c = await resume(b, 0);
   expect(await c.next()).toEqual(
-    wire(4, "transcript", {
+    wire(3, "transcript", {
       sessionId: "s1",
       cwd: "/work",
       messages: [
@@ -485,7 +480,7 @@ test("a snapshot taken mid-run includes the message still streaming", async () =
   gateway.emit({ name: "messageEnd", text: "Hello!", thinking: "hm" });
   const next = await c.next();
   expect(next).toEqual(
-    wire(5, "messageEnd", { text: "Hello!", thinking: "hm" })
+    wire(4, "messageEnd", { text: "Hello!", thinking: "hm" })
   );
 });
 
@@ -539,17 +534,17 @@ test("reconnecting with a recent cursor replays exactly the missed events, then 
   const b = await bridge(undefined, gateway);
   gateway.emit({ name: "runStarted" });
   for (const text of ["a", "b", "c"])
-    gateway.emit({ name: "delta", kind: "text", text });
+    gateway.emit({ name: "userMessage", text });
 
   const c = await resume(b, 2);
-  gateway.emit({ name: "delta", kind: "text", text: "d" });
+  gateway.emit({ name: "userMessage", text: "d" });
 
   for (const [seq, text] of [
     [3, "b"],
     [4, "c"],
     [5, "d"],
   ] as const)
-    expect(await c.next()).toEqual(wire(seq, "delta", { kind: "text", text }));
+    expect(await c.next()).toEqual(wire(seq, "userMessage", { text }));
 });
 
 test("a cursor at the live seq replays nothing", async () => {
@@ -568,11 +563,11 @@ test("a cursor older than the replay window gets a snapshot instead", async () =
   const b = await bridge(undefined, gateway, 2);
   gateway.emit({ name: "runStarted" });
   for (const text of ["a", "b", "c", "d"])
-    gateway.emit({ name: "delta", kind: "text", text });
+    gateway.emit({ name: "userMessage", text });
 
   // Window holds seq 4 and 5: a cursor of 3 is still replayable, 2 is not.
   const recent = await resume(b, 3);
-  expect(await recent.next()).toMatchObject({ seq: 4, name: "delta" });
+  expect(await recent.next()).toMatchObject({ seq: 4, name: "userMessage" });
 
   const stale = await resume(b, 2);
   expect(await stale.next()).toMatchObject({ seq: 5, name: "transcript" });

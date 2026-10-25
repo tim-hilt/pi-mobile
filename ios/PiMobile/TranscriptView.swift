@@ -69,7 +69,9 @@ struct TranscriptView: View {
             }
           }
           if let message = transcript.streaming { MessageView(message: message, isStreaming: true) }
-          if let startedAt = transcript.runStartedAt { RunningView(startedAt: startedAt) }
+          if let startedAt = transcript.runStartedAt {
+            ElapsedText(since: startedAt) { "Running for \($0)…" }.font(.footnote).foregroundStyle(.secondary)
+          }
           if client.state == .offline {
             Label("Lost connection", systemImage: "network.slash").font(.footnote).foregroundStyle(.secondary)
           }
@@ -261,17 +263,6 @@ private struct ToolCallView: View {
       .font(.caption)
       .foregroundStyle(.secondary)
     }
-  }
-}
-
-/// Live elapsed time of the active run.
-private struct RunningView: View {
-  let startedAt: Date
-
-  var body: some View {
-    ElapsedText(since: startedAt) { "Running for \($0)…" }
-      .font(.footnote)
-      .foregroundStyle(.secondary)
   }
 }
 

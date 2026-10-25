@@ -26,6 +26,35 @@ export interface LiveSession extends SharedSessionInfo {
 
 type Listener = (event: BridgeEvent) => void;
 
+/**
+ * How long a delta or tool output update is held back for the next one to
+ * merge into: streaming then costs the app ~20 updates a second, not one per token.
+ */
+const COALESCE_MS = 50;
+
+/**
+ * Folds `next` into the held-back, coalescable `held` if it continues it: a
+ * delta of the same kind appends, an output update of the same tool call replaces.
+ */
+function absorb(
+  held: Omit<BridgeEvent, "seq">,
+  next: Omit<BridgeEvent, "seq">
+): boolean {
+  if (!isCoalescable(next) || held.name !== next.name) return false;
+  if (held.name === "delta") {
+    if (held.data.kind !== next.data.kind) return false;
+    held.data.text = `${held.data.text}${next.data.text}`;
+  } else {
+    if (held.data.toolCallId !== next.data.toolCallId) return false;
+    held.data = next.data;
+  }
+  return true;
+}
+
+/** Whether `event` may be held back for later ones to merge into (see `absorb`). */
+const isCoalescable = ({ name, data }: Omit<BridgeEvent, "seq">) =>
+  name === "delta" || (name === "toolCall" && data.phase === "update");
+
 /** What a `Session` gets from its hub. */
 interface SessionOptions {
   /** Events kept for replay on rejoin; older cursors get a snapshot. */
@@ -38,7 +67,8 @@ interface SessionOptions {
 
 /**
  * One shared pi session as the protocol sees it: turns the gateway's events
- * into sequenced `BridgeEvent`s (adding run timing) and remembers recent ones
+ * into sequenced `BridgeEvent`s (adding run timing, coalescing bursts of
+ * deltas and output updates) and remembers recent ones
  * so a rejoining client can catch up. Calls to pi go to `gateway` directly.
  */
 export class Session {
@@ -57,6 +87,9 @@ export class Session {
   private streaming: { text: string; thinking: string } | undefined;
   /** Text of the current run's latest assistant message that had any, for the notifier. */
   private lastText: string | undefined;
+  /** A delta or output update not yet sequenced, waiting for more to merge into it. */
+  private held:
+    { event: Omit<BridgeEvent, "seq">; timer: NodeJS.Timeout } | undefined;
   /** Joined clients; `false` while one waits for its snapshot and gets no events yet. */
   private listeners = new Map<Listener, boolean>();
   private detach: () => void;
@@ -111,6 +144,7 @@ export class Session {
   /** Pi stopped sharing: joined clients get `sessionEnded`, then nothing more. */
   end(): void {
     this.detach();
+    this.flush();
     const ended = {
       seq: ++this.seq,
       name: "sessionEnded",
@@ -144,6 +178,8 @@ export class Session {
     messages: completed,
     ...queueAndStatus
   }: SessionHistory): BridgeEvent {
+    // `streaming` already holds what is held back: sequence it before the snapshot claims its seq.
+    this.flush();
     const messages: Record<string, unknown>[] = [...completed];
     if (this.streaming)
       messages.push({ role: "assistant", ...this.streaming, streaming: true });
@@ -173,6 +209,7 @@ export class Session {
    * never replay the old session's events.
    */
   private restart(): void {
+    this.flush();
     this.runStartedAt = undefined;
     this.lastStopReason = undefined;
     this.streaming = undefined;
@@ -220,7 +257,35 @@ export class Session {
         });
       this.lastText = undefined;
     }
-    const wire = { seq: ++this.seq, name, data };
+    this.emit({ name, data });
+  }
+
+  /**
+   * Sequences `event` and sends it to the ready listeners, holding a delta or
+   * output update back for `COALESCE_MS` so a burst of them goes out as one.
+   */
+  private emit(event: Omit<BridgeEvent, "seq">): void {
+    if (this.held && absorb(this.held.event, event)) return;
+    this.flush();
+    if (isCoalescable(event)) {
+      const timer = setTimeout(() => this.flush(), COALESCE_MS);
+      this.held = { event, timer };
+    } else {
+      this.send(event);
+    }
+  }
+
+  /** Sends the held-back event, if any, now. */
+  private flush(): void {
+    if (!this.held) return;
+    clearTimeout(this.held.timer);
+    const { event } = this.held;
+    this.held = undefined;
+    this.send(event);
+  }
+
+  private send(event: Omit<BridgeEvent, "seq">): void {
+    const wire = { seq: ++this.seq, ...event };
     this.log.push(wire);
     if (this.log.length > this.options.replayLimit) this.log.shift();
     for (const [listener, ready] of this.listeners) if (ready) listener(wire);

@@ -86,9 +86,16 @@ struct Transcript: Equatable, Sendable {
     }
 
     /// The last 5 lines of the output, as a running call previews them.
+    /// Trailing blank lines are skipped.
     var outputTail: String {
-      output.split(separator: "\n", omittingEmptySubsequences: false)
-        .reversed().drop { $0.isEmpty }.prefix(5).reversed().joined(separator: "\n")
+      // Scans back from the end only: the output can be long, and is re-read on every update.
+      let text = output[..<(output.lastIndex { $0 != "\n" }.map(output.index(after:)) ?? output.startIndex)]
+      var start = text.endIndex
+      for _ in 0..<5 {
+        guard let newline = text[..<start].lastIndex(of: "\n") else { return String(text) }
+        start = newline
+      }
+      return String(text[text.index(after: start)...])
     }
   }
 
