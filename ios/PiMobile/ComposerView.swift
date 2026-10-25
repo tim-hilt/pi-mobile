@@ -143,7 +143,7 @@ struct ComposerView: View {
   }
 }
 
-/// Provider, model and thinking level of the session, as one tappable pill.
+/// Model and thinking level of the session, as one tappable pill.
 private struct ModelButton: View {
   let status: Transcript.Status
   let action: () -> Void
@@ -152,7 +152,6 @@ private struct ModelButton: View {
     Button(action: action) {
       HStack(spacing: 4) {
         if let name = status.modelName {
-          if let provider = status.provider { Text(provider) }
           Text(name)
         } else {
           Text("No model")

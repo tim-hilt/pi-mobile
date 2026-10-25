@@ -162,8 +162,10 @@ private struct MarkdownView: View {
   }
 }
 
-/// A tool execution. Running, it previews its command, output tail and elapsed time; finished,
-/// it collapses to its outcome and duration. Expanding shows the command (or arguments) and output.
+/// A tool execution, summarised in one line (`$ <command>`, `read <path>`, …). A running bash
+/// call previews its output tail and elapsed time; other calls are quick and show neither.
+/// Finished, it shows its outcome and, for bash, its duration. Expanding shows the full command
+/// (or arguments) and output; for `edit`, the diff instead.
 private struct ToolCallView: View {
   let call: Transcript.ToolCall
 
@@ -171,48 +173,71 @@ private struct ToolCallView: View {
 
   var body: some View {
     DisclosureGroup(isExpanded: $isExpanded) {
-      VStack(alignment: .leading, spacing: 6) {
-        if let command = call.command {
-          Text(command).textSelection(.enabled)
-        } else if let args = call.args {
-          Text(args.formatted).textSelection(.enabled)
-        }
-        if !call.output.isEmpty {
-          Divider()
-          Text(call.output).textSelection(.enabled)
-        }
-      }
-      .font(.caption.monospaced())
-      .frame(maxWidth: .infinity, alignment: .leading)
+      details
+        .font(.caption.monospaced())
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
     } label: {
-      if call.status == .running { running } else { finished }
+      if call.status == .running, call.command != nil { runningCommand } else { header }
     }
+    .tint(.secondary)
+    .foregroundStyle(.primary)
     .padding(10)
     .background(.quaternary, in: .rect(cornerRadius: 10))
   }
 
-  private var finished: some View {
-    HStack {
-      Image(systemName: call.status == .failed ? "xmark.circle" : "checkmark.circle")
-        .foregroundStyle(call.status == .failed ? .red : .green)
-      Text(call.name).font(.subheadline.monospaced())
-      Spacer()
-      if let durationMs = call.durationMs {
-        Text("took \(format(durationMs: durationMs))").font(.caption).foregroundStyle(.secondary)
+  @ViewBuilder private var details: some View {
+    let diff = call.diff
+    if !diff.isEmpty, call.status != .failed {
+      VStack(alignment: .leading, spacing: 0) {
+        ForEach(diff.indices, id: \.self) { index in
+          let line = diff[index]
+          switch line.kind {
+          case .context: Text("  " + line.text).foregroundStyle(.secondary)
+          case .removed: Text("- " + line.text).foregroundStyle(.red)
+          case .added: Text("+ " + line.text).foregroundStyle(.green)
+          }
+        }
+      }
+    } else {
+      VStack(alignment: .leading, spacing: 6) {
+        if let command = call.command {
+          Text(command)
+        } else if let args = call.args {
+          Text(args.formatted).foregroundStyle(.secondary)
+        }
+        if !call.output.isEmpty {
+          Divider()
+          Text(call.output).foregroundStyle(.secondary)
+        }
       }
     }
   }
 
-  private var running: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack {
-        ProgressView().controlSize(.small)
-        Text(call.name).font(.subheadline.monospaced())
+  private var header: some View {
+    HStack {
+      statusIcon
+      Text(call.summary).font(.subheadline.monospaced()).lineLimit(1).truncationMode(.middle)
+      Spacer(minLength: 4)
+      if call.command != nil, let durationMs = call.durationMs {
+        Text("took \(format(seconds: Double(durationMs) / 1000))")
+          .font(.caption).foregroundStyle(.secondary).fixedSize()
       }
+    }
+  }
+
+  @ViewBuilder private var statusIcon: some View {
+    switch call.status {
+    case .running: Image(systemName: "circle.dotted").foregroundStyle(.secondary)
+    case .succeeded: Image(systemName: "checkmark.circle").foregroundStyle(.green)
+    case .failed: Image(systemName: "xmark.circle").foregroundStyle(.red)
+    }
+  }
+
+  private var runningCommand: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(call.summary).font(.subheadline.monospaced()).lineLimit(1)
       if !isExpanded {
-        if let command = call.command {
-          Text(command.replacing("\n", with: " ")).font(.caption.monospaced()).lineLimit(1)
-        }
         let tail = call.outputTail
         if !tail.isEmpty {
           Text(tail)
@@ -223,8 +248,11 @@ private struct ToolCallView: View {
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.tertiary))
         }
       }
-      ElapsedText(since: call.startedAt) { elapsed in
-        call.timeoutSeconds.map { "\(elapsed) (timeout \(format(seconds: $0)))" } ?? elapsed
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.mini)
+        ElapsedText(since: call.startedAt) { elapsed in
+          call.timeoutSeconds.map { "\(elapsed) (timeout \(format(seconds: $0)))" } ?? elapsed
+        }
       }
       .font(.caption)
       .foregroundStyle(.secondary)

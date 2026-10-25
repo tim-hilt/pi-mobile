@@ -49,11 +49,53 @@ struct Transcript: Equatable, Sendable {
       return timeout
     }
 
+    /// One line saying what the call does: `$ <command>` for bash, else the tool name followed by
+    /// its target (`pattern`, `path`), e.g. `read ~/a.txt`.
+    var summary: String {
+      if let command { return "$ " + command.replacing("\n", with: " ") }
+      guard case .object(let args) = args else { return name }
+      let target = ["pattern", "path"].compactMap { key -> String? in
+        if case .string(let value) = args[key] { value } else { nil }
+      }
+      return ([name] + target).joined(separator: " ")
+    }
+
+    /// The changes an `edit` call makes, from its `edits` argument; empty for other tools.
+    /// Lines each replacement leaves alone at its start and end are shown as context.
+    var diff: [DiffLine] {
+      guard name == "edit", case .object(let args) = args, case .array(let edits) = args["edits"] else { return [] }
+      return edits.flatMap { edit -> [DiffLine] in
+        guard case .object(let edit) = edit, case .string(let old) = edit["oldText"],
+          case .string(let new) = edit["newText"]
+        else { return [] }
+        var removed = old.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var added = new.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var leading: [String] = []
+        var trailing: [String] = []
+        while removed.count > 1, added.count > 1, removed.first == added.first {
+          leading.append(removed.removeFirst())
+          added.removeFirst()
+        }
+        while removed.count > 1, added.count > 1, removed.last == added.last {
+          trailing.insert(removed.removeLast(), at: 0)
+          added.removeLast()
+        }
+        return leading.map { DiffLine(kind: .context, text: $0) } + removed.map { DiffLine(kind: .removed, text: $0) }
+          + added.map { DiffLine(kind: .added, text: $0) } + trailing.map { DiffLine(kind: .context, text: $0) }
+      }
+    }
+
     /// The last 5 lines of the output, as a running call previews them.
     var outputTail: String {
       output.split(separator: "\n", omittingEmptySubsequences: false)
         .reversed().drop { $0.isEmpty }.prefix(5).reversed().joined(separator: "\n")
     }
+  }
+
+  struct DiffLine: Equatable, Sendable {
+    enum Kind: Sendable { case context, removed, added }
+    let kind: Kind
+    let text: String
   }
 
   enum StopReason: String, Sendable {

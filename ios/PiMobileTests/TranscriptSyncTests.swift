@@ -339,6 +339,32 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(call.outputTail == "")
   }
 
+  @Test(arguments: [
+    (#""bash","args":{"command":"cd x\necho hi"}"#, "$ cd x echo hi"),
+    (#""read","args":{"path":"~/a.txt","offset":3}"#, "read ~/a.txt"),
+    (#""grep","args":{"pattern":"foo","path":"src"}"#, "grep foo src"),
+    (#""custom","args":{"n":1}"#, "custom"),
+  ])
+  func aToolCallIsSummarisedInOneLine(start: String, summary: String) throws {
+    var transcript = Transcript()
+    try transcript.apply(
+      frame: event(1, "toolCall", #"{"phase":"start","toolCallId":"t1","toolName":"# + start + "}"))
+
+    #expect(try #require(transcript.toolCalls.first).summary == summary)
+  }
+
+  @Test func anEditShowsItsChangesAsADiffKeepingSharedLinesAsContext() throws {
+    var transcript = Transcript()
+    try transcript.apply(
+      frame: event(
+        1, "toolCall",
+        #"{"phase":"start","toolCallId":"t1","toolName":"edit","args":{"path":"a","edits":[{"oldText":"a\nb\nc","newText":"a\nB\nc"},{"oldText":"x","newText":"y"}]}}"#))
+
+    let diff = try #require(transcript.toolCalls.first).diff
+    #expect(diff.map(\.kind) == [.context, .removed, .added, .context, .removed, .added])
+    #expect(diff.map(\.text) == ["a", "b", "B", "c", "x", "y"])
+  }
+
   @Test func theCurrentRunIsTimedFromItsStartAndSettlingEndsIt() async throws {
     let (client, bridge, _) = try await connect { _, _, peer in
       peer.send(ack)
