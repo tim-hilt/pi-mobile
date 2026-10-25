@@ -15,7 +15,7 @@ export interface SettledRun {
   cwd: string;
   /** Absent while the session has no user-given name. */
   sessionName?: string;
-  stopReason: StopReason;
+  stopReason: Exclude<StopReason, "aborted">;
   errorMessage?: string;
   /** Text of the run's latest assistant message that had any. */
   lastText?: string;
@@ -30,10 +30,9 @@ export interface RunNotifier {
 // ntfy rejects messages above 4096 bytes; stay well below.
 const MAX_MESSAGE_CHARS = 1000;
 const ICON = "https://upload.wikimedia.org/wikipedia/commons/8/81/Pi_logo.png";
-const OUTCOME: Record<StopReason, string> = {
+const OUTCOME: Record<SettledRun["stopReason"], string> = {
   success: "Agent Finished",
   error: "Agent Failed",
-  aborted: "Agent Aborted",
   length: "Agent Cut Off",
 };
 

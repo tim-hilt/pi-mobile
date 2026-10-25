@@ -98,7 +98,6 @@ test("tapping the notification opens its session in the app", async () => {
 
 test.each<[StopReason, string]>([
   ["error", "Agent Failed"],
-  ["aborted", "Agent Aborted"],
   ["length", "Agent Cut Off"],
 ])("a run that settles as %s is titled %s", async (stopReason, title) => {
   const ntfy = await fakeNtfy();
@@ -109,6 +108,20 @@ test.each<[StopReason, string]>([
   expect(JSON.parse((await ntfy.firstPost()).body).title).toBe(
     `work: ${title}`
   );
+});
+
+test("an interrupted run is not announced", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+
+  runThrough(gateway, "aborted");
+  runThrough(gateway, "success");
+
+  await ntfy.firstPost();
+  await new Promise((r) => setTimeout(r, 50));
+  expect(ntfy.posts.map((p) => JSON.parse(p.body).title)).toEqual([
+    "work: Agent Finished",
+  ]);
 });
 
 test("a named session is titled by its name", async () => {
@@ -149,7 +162,7 @@ test("an answer from an earlier run is not reported again", async () => {
   gateway.emit({ name: "runStarted" });
   gateway.emit({ name: "messageEnd", text: "old answer", thinking: "" });
   gateway.emit({ name: "runSettled", stopReason: "success" });
-  runThrough(gateway, "aborted");
+  runThrough(gateway, "error");
 
   while (ntfy.posts.length < 2) await new Promise((r) => setTimeout(r, 5));
 

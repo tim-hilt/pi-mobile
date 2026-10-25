@@ -232,14 +232,16 @@ export class Session {
       Object.assign(data, { durationMs });
       const { id, cwd, name: sessionName } = this.gateway.info();
       this.options.onChange();
-      this.options.notifier?.runSettled({
-        sessionId: id,
-        cwd,
-        sessionName,
-        stopReason: event.stopReason,
-        errorMessage: event.errorMessage,
-        lastText: this.lastText,
-      });
+      // An interrupted run was the user's own doing: nothing to announce.
+      if (event.stopReason !== "aborted")
+        this.options.notifier?.runSettled({
+          sessionId: id,
+          cwd,
+          sessionName,
+          stopReason: event.stopReason,
+          errorMessage: event.errorMessage,
+          lastText: this.lastText,
+        });
       this.lastText = undefined;
     }
     const wire = { seq: ++this.seq, name, data };
