@@ -47,7 +47,7 @@ enum BridgeProtocol {
     case type, id, error, result, seq, name, data
     case sessions, epoch, protocolVersion, skills, models, files
     case sessionId, cwd, messages, running, elapsedMs, steering, followUp
-    case model, contextTokens, contextWindow, cost
+    case model, provider, modelName, thinkingLevel, thinkingLevels, contextTokens, contextWindow, cost
     case role, text, thinking, streaming, kind
     case phase, toolCallId, toolName, args, output, isError, durationMs
     case stopReason, errorMessage
@@ -208,6 +208,10 @@ private struct WireRecord: Decodable {
   private static func status(_ data: Values) throws -> Transcript.Status {
     Transcript.Status(
       model: try data.decodeIfPresent(String.self, forKey: .model),
+      provider: try data.decodeIfPresent(String.self, forKey: .provider),
+      modelName: try data.decodeIfPresent(String.self, forKey: .modelName),
+      thinkingLevel: try data.decodeIfPresent(String.self, forKey: .thinkingLevel),
+      thinkingLevels: try data.decodeIfPresent([String].self, forKey: .thinkingLevels) ?? [],
       contextTokens: try data.decodeIfPresent(Int.self, forKey: .contextTokens),
       contextWindow: try data.decodeIfPresent(Int.self, forKey: .contextWindow),
       cost: try data.decodeIfPresent(Double.self, forKey: .cost) ?? 0)

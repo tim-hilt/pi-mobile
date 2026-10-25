@@ -134,6 +134,11 @@ final class BridgeClient {
     try await command("setModel", ["provider": .string(model.provider), "id": .string(model.id)])
   }
 
+  /// Sets how hard the model thinks, one of `transcript.status.thinkingLevels`; the status follows.
+  func setThinkingLevel(_ level: String) async throws {
+    try await command("setThinkingLevel", ["level": .string(level)])
+  }
+
   /// Workspace files matching `query` (prefix or fuzzy), best first, as paths relative to the
   /// session's working directory.
   func searchFiles(_ query: String) async throws -> [String] {

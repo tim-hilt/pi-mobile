@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// One session's synced conversation, newest at the bottom, with the composer and the session's
-/// status below it. Shows the session (joining it) when it appears.
+/// One session's synced conversation, newest at the bottom, with the composer (which shows the
+/// session's status) below it. Shows the session (joining it) when it appears.
 struct TranscriptView: View {
   let client: BridgeClient
   let sessionId: String
@@ -18,20 +18,16 @@ struct TranscriptView: View {
       conversation
       ComposerView(
         client: client, sessionId: sessionId, isLive: isLive, isRunning: client.transcript.isRunning,
-        queue: client.transcript.queue
-      )
+        queue: client.transcript.queue, status: client.transcript.status
+      ) { showingModels = true }
       .disabled(!isShown || client.state != .connected)
-      if isShown {
-        StatusBar(cwd: client.transcript.cwd, status: client.transcript.status) { showingModels = true }
-          .disabled(!isLive)
-      }
     }
     .navigationTitle(isShown ? client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "" : "")
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       Button("Stats", systemImage: "info.circle") { showingStats = true }.disabled(!isLive)
     }
-    .sheet(isPresented: $showingModels) { ModelsView(client: client) }
+    .sheet(isPresented: $showingModels) { ModelsView(client: client).presentationDetents([.medium, .large]) }
     .sheet(isPresented: $showingStats) { StatsView(client: client) }
     // The client joins it once connected, and again after every reconnect.
     .task(id: sessionId) { client.show(sessionId: sessionId) }
@@ -239,44 +235,6 @@ private struct ToolCallView: View {
     }
     .padding(10)
     .background(.quaternary, in: .rect(cornerRadius: 10))
-  }
-}
-
-/// One line like pi's footer: directory on the left; model, context fill and price on the right.
-/// Tapping the model calls `pickModel`.
-private struct StatusBar: View {
-  let cwd: String?
-  let status: Transcript.Status
-  let pickModel: () -> Void
-
-  var body: some View {
-    HStack(spacing: 8) {
-      if let cwd { Text(Self.abbreviatingHome(cwd)).truncationMode(.head) }
-      Spacer(minLength: 0)
-      Group {
-        Button(status.model ?? "No model", action: pickModel).buttonStyle(.borderless)
-        Text("· \(details)")
-      }
-      .layoutPriority(1)
-    }
-    .font(.caption.monospacedDigit())
-    .foregroundStyle(.secondary)
-    .lineLimit(1)
-    .padding(.horizontal)
-    .padding(.bottom, 4)
-    .background(.bar)
-  }
-
-  private var details: String {
-    [status.contextUsage, status.cost.formatted(.currency(code: "USD"))]
-      .compactMap { $0 }
-      .joined(separator: " · ")
-  }
-
-  /// `~` for the Mac user's home, as pi shows it. The app can't ask the Mac where home is, so it
-  /// assumes macOS's (and Linux's) layout.
-  private static func abbreviatingHome(_ path: String) -> String {
-    path.replacing(/^\/(Users|home)\/[^\/]+/, with: "~")
   }
 }
 

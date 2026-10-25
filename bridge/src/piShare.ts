@@ -35,8 +35,12 @@ export interface PiHost {
   sessionName(): string | undefined;
   cwd: string;
   commands(): SlashCommandInfo[];
-  /** Id of the active model, if one is selected. */
-  model(): string | undefined;
+  /** The active model, if one is selected. */
+  model(): ModelInfo | undefined;
+  thinkingLevel(): string;
+  /** The levels the active model supports, weakest first. */
+  thinkingLevels(): string[];
+  setThinkingLevel(level: string): void;
   /** `ctx.getContextUsage()`: undefined without a model; `tokens` is null while unknown. */
   contextUsage(): { tokens: number | null; contextWindow: number } | undefined;
   /** The models pi's `/model` offers: the session's scoped models, else every one with credentials. */
@@ -54,6 +58,7 @@ const STATUS_CHANGES = new Set([
   "turn_end",
   "agent_settled",
   "model_select",
+  "thinking_level_select",
   "session_compact",
   "session_tree",
 ]);
@@ -68,7 +73,7 @@ export interface PiEvent {
  * One pi session as shared over the Share Link: translates pi's extension
  * events into gateway events, answers the bridge's calls, and owns the run
  * lifecycle — a run begins at pi's `agent_start` and ends when pi reports it
- * settled — and the status (model, context fill, price), sent when it
+ * settled — and the status (model, thinking level, context fill, price), sent when it
  * changes. Pi doesn't expose its queue to extensions, so the queue holds only
  * what arrived over the link.
  *
@@ -143,6 +148,10 @@ export class PiShare implements ShareCalls {
 
   setModel(provider: string, id: string): Promise<void> {
     return this.host.setModel(provider, id);
+  }
+
+  setThinkingLevel(level: string): void {
+    this.host.setThinkingLevel(level);
   }
 
   /** Translates one pi session event. */
@@ -275,7 +284,13 @@ export class PiShare implements ShareCalls {
     const model = this.host.model();
     const context = this.host.contextUsage();
     return {
-      ...(model !== undefined && { model }),
+      ...(model && {
+        model: model.id,
+        provider: model.provider,
+        modelName: model.name,
+        thinkingLevel: this.host.thinkingLevel(),
+        thinkingLevels: this.host.thinkingLevels(),
+      }),
       ...(typeof context?.tokens === "number" && {
         contextTokens: context.tokens,
       }),

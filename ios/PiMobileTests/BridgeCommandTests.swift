@@ -138,12 +138,14 @@ private func event(_ seq: Int, _ name: String, _ data: String) -> String {
     let (client, bridge, _) = try await connected(
       onConnect: event(
         1, "transcript",
-        #"{"running":false,"messages":[],"model":"opus","contextTokens":18800,"contextWindow":1000000,"cost":0.5}"#))
+        #"{"running":false,"messages":[],"model":"opus","provider":"anthropic","modelName":"Claude Opus","thinkingLevel":"medium","thinkingLevels":["off","medium"],"contextTokens":18800,"contextWindow":1000000,"cost":0.5}"#))
     defer { bridge.stop() }
     for _ in 0..<500 where client.transcript.lastSeq < 1 { try await Task.sleep(for: .milliseconds(10)) }
     #expect(
       client.transcript.status
-        == Transcript.Status(model: "opus", contextTokens: 18_800, contextWindow: 1_000_000, cost: 0.5))
+        == Transcript.Status(
+          model: "opus", provider: "anthropic", modelName: "Claude Opus", thinkingLevel: "medium",
+          thinkingLevels: ["off", "medium"], contextTokens: 18_800, contextWindow: 1_000_000, cost: 0.5))
 
     let (fresh, freshBridge, _) = try await connected(
       onConnect: event(2, "status", #"{"model":"opus","contextWindow":1000000,"cost":0.75}"#))
@@ -211,6 +213,17 @@ extension BridgeCommandTests {
     #expect(frame.contains(#""name":"setModel""#))
     #expect(frame.contains(#""provider":"anthropic""#))
     #expect(frame.contains(#""id":"opus""#))
+  }
+
+  @Test func settingTheThinkingLevelNamesIt() async throws {
+    let (client, bridge, received) = try await connected { _, peer in peer.send(result(2)) }
+    defer { bridge.stop() }
+
+    try await client.setThinkingLevel("high")
+
+    let frame = try #require(received.value?.first)
+    #expect(frame.contains(#""name":"setThinkingLevel""#))
+    #expect(frame.contains(#""level":"high""#))
   }
 
   @Test func searchingFilesSendsTheQueryAndReturnsTheMatches() async throws {

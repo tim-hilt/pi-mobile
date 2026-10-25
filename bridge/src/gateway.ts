@@ -32,6 +32,11 @@ export interface ShareCalls {
    * as a `status` event. Rejects if pi can't (unknown model, no credentials).
    */
   setModel(provider: string, id: string): Promise<void>;
+  /**
+   * Sets how hard the model thinks, one of `status.thinkingLevels`; pi clamps
+   * other levels to what the model supports. The change shows as a `status` event.
+   */
+  setThinkingLevel(level: string): void;
   /** Message, tool and token counts of the whole session. */
   stats(): GatewayStats;
 }
@@ -87,8 +92,16 @@ export interface SessionHistory extends QueuedMessages, SessionStatus {
 
 /** What a status bar shows about the session, as pi's footer does. */
 export interface SessionStatus {
-  /** Id of the active model; absent when none is selected. */
+  /** Id of the active model; absent when none is selected, as are the model fields below. */
   model?: string;
+  /** Provider of the active model. */
+  provider?: string;
+  /** Human-readable name of the active model. */
+  modelName?: string;
+  /** How hard the active model thinks, e.g. `medium`; `off` for models that can't. */
+  thinkingLevel?: string;
+  /** The levels the active model supports, weakest first; just `off` for models that can't think. */
+  thinkingLevels?: string[];
   /** Tokens the model's context holds; absent when unknown (no model, or compacted since its last answer). */
   contextTokens?: number;
   /** Size of the active model's context window; absent when no model is selected. */

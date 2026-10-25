@@ -62,7 +62,7 @@ Right after the `hello` result, and again whenever a session starts or ends, sta
 
 ## Commands
 
-`hello`, `joinSession`, `prompt`, `abort`, `getStats`, `listSkills`, `searchFiles`, `listModels`, `setModel`. All but the first two concern the joined session; sent before joining → `error.code = "notJoined"`.
+`hello`, `joinSession`, `prompt`, `abort`, `getStats`, `listSkills`, `searchFiles`, `listModels`, `setModel`, `setThinkingLevel`. All but the first two concern the joined session; sent before joining → `error.code = "notJoined"`.
 
 ### `joinSession`
 
@@ -100,6 +100,10 @@ Params `{}`. Result `{ models: { provider, id, name }[] }` — the models pi's `
 
 Params `{ provider: string, id: string }`. Result `{}` once pi switched; a `status` event follows. Unknown model or no credentials → `sessionError`; bad params → `invalidParams`.
 
+### `setThinkingLevel`
+
+Params `{ level: string }`, one of `status.thinkingLevels`. Result `{}`; a `status` event follows. Pi clamps other levels to what the model supports; bad params → `invalidParams`.
+
 ## Events
 
 Run events, in the order a run emits them:
@@ -115,13 +119,13 @@ Run events, in the order a run emits them:
 
 `durationMs` is measured by the bridge from `runStarted` to `runSettled`. `runStarted` is sent as soon as pi accepts a prompt. `stopReason` is `error` (with `errorMessage`) when the run's final assistant message failed, `aborted` when it was aborted, `length` when it ended because the model hit its output limit, else `success`; failures a retry recovered from do not count.
 
-`status` `{ model?, contextTokens?, contextWindow?, cost }` — what pi's footer shows, sent whole whenever it changes: `model` the active model's id, `contextTokens` how much of its `contextWindow` the context fills (absent while unknown, e.g. right after compaction; both absent without a model), `cost` the whole session's price in USD. Usage counts once a turn ends.
+`status` `{ model?, provider?, modelName?, thinkingLevel?, thinkingLevels?, contextTokens?, contextWindow?, cost }` — what pi's footer shows, sent whole whenever it changes: `model` the active model's id, `provider` and `modelName` its provider and readable name, `thinkingLevel` how hard it thinks (`off` if it can't) out of its supported `thinkingLevels` (weakest first; all five absent without a model), `contextTokens` how much of its `contextWindow` the context fills (absent while unknown, e.g. right after compaction; both absent without a model), `cost` the whole session's price in USD. Usage counts once a turn ends.
 
 `sessionEnded` `{ sessionId }` — pi quit: the session is gone and the connection is no longer joined. It is the last event of the session.
 
 ### `transcript`
 
-`{ sessionId, cwd, messages, running, steering, followUp, model?, contextTokens?, contextWindow?, cost }` — `sessionId` is the session shown, `cwd` its working directory; the whole conversation, oldest first. `messages` entries are `{ role: "user", text }`, `{ role: "assistant", text, thinking }` (completed messages; a turn with neither is omitted) or `{ role: "toolCall", toolCallId, toolName, args, output?, isError? }` after the assistant turn that made the call (`output`/`isError` as in `toolCall` `end`, absent until the tool finished; later `toolCall` events with that `toolCallId` update it). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event, `model`, `contextTokens`, `contextWindow` and `cost` the status as in the `status` event. Past runs' outcomes and tool durations are not part of a snapshot.
+`{ sessionId, cwd, messages, running, steering, followUp, model?, provider?, modelName?, thinkingLevel?, thinkingLevels?, contextTokens?, contextWindow?, cost }` — `sessionId` is the session shown, `cwd` its working directory; the whole conversation, oldest first. `messages` entries are `{ role: "user", text }`, `{ role: "assistant", text, thinking }` (completed messages; a turn with neither is omitted) or `{ role: "toolCall", toolCallId, toolName, args, output?, isError? }` after the assistant turn that made the call (`output`/`isError` as in `toolCall` `end`, absent until the tool finished; later `toolCall` events with that `toolCallId` update it). If an assistant message is still being generated it is the last entry, holding its deltas so far, with `streaming: true`; later `delta` events extend it and its `messageEnd` replaces it. `running` is whether a run is active; while it is, `elapsedMs` is how long it has been going. `steering`/`followUp` are the queue as in the `queue` event, the `model` … `cost` fields the status as in the `status` event. Past runs' outcomes and tool durations are not part of a snapshot.
 
 ### `toolCall`
 

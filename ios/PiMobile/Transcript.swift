@@ -62,8 +62,15 @@ struct Transcript: Equatable, Sendable {
 
   /// What a status bar shows about the session, as pi's footer does.
   struct Status: Equatable, Sendable {
-    /// Id of the active model; nil when none is selected.
+    /// Id of the active model; nil when none is selected, as are the model fields below.
     var model: String?
+    var provider: String?
+    /// Human-readable name of the active model.
+    var modelName: String?
+    /// How hard the active model thinks, e.g. `medium`; `off` for models that can't.
+    var thinkingLevel: String?
+    /// The levels the active model supports, weakest first.
+    var thinkingLevels: [String] = []
     /// Tokens the context holds; nil while unknown (e.g. right after compaction) or without a model.
     var contextTokens: Int?
     /// Size of the active model's context window; nil without a model.

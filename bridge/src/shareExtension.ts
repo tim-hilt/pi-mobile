@@ -2,6 +2,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -76,6 +77,7 @@ export default function share(pi: ExtensionAPI) {
   pi.on("tool_execution_end", forward);
   pi.on("turn_end", forward);
   pi.on("model_select", forward);
+  pi.on("thinking_level_select", forward);
   pi.on("session_compact", forward);
   pi.on("session_tree", forward);
 }
@@ -96,7 +98,12 @@ function host(pi: ExtensionAPI, ctx: ExtensionContext) {
     sessionName: () => pi.getSessionName(),
     cwd: ctx.cwd,
     commands: () => pi.getCommands(),
-    model: () => ctx.model?.id,
+    model: () => ctx.model,
+    thinkingLevel: () => pi.getThinkingLevel(),
+    thinkingLevels: () =>
+      ctx.model ? getSupportedThinkingLevels(ctx.model) : ["off"],
+    setThinkingLevel: (level: string) =>
+      pi.setThinkingLevel(level as ReturnType<typeof pi.getThinkingLevel>),
     contextUsage: () => ctx.getContextUsage(),
     models: () =>
       ctx.scopedModels.length > 0

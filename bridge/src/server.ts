@@ -177,6 +177,11 @@ function serve(ws: WebSocket, pingIntervalMs: number, hub: SessionHub): void {
         invalidParams("setModel requires string provider and id");
       return session().gateway.call("setModel", provider, id);
     },
+    setThinkingLevel: ({ level }) => {
+      if (typeof level !== "string")
+        invalidParams("setThinkingLevel requires string level");
+      return session().gateway.call("setThinkingLevel", level);
+    },
     searchFiles: async ({ query, limit = DEFAULT_FILE_LIMIT }) => {
       if (
         typeof query !== "string" ||

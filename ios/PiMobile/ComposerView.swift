@@ -3,6 +3,8 @@ import SwiftUI
 /// Message entry below the transcript: send a prompt when idle; during a run, steer or queue a
 /// follow-up, abort, and see what is still queued. Typing `/` offers the session's
 /// skills and `@` its files; Tab (hardware keyboard) takes the first suggestion, Esc dismisses.
+/// Below the text sit the session's model and thinking level (tapping calls `pickModel`), its
+/// context fill and price; the send button shows only once there is something to send.
 struct ComposerView: View {
   /// Takes the commands; the transcript state below is passed in, so streaming leaves this alone.
   let client: BridgeClient
@@ -12,6 +14,8 @@ struct ComposerView: View {
   let isLive: Bool
   let isRunning: Bool
   let queue: Transcript.Queue
+  let status: Transcript.Status
+  let pickModel: () -> Void
 
   @State private var draft = ""
   @State private var failure: String?
@@ -42,10 +46,9 @@ struct ComposerView: View {
       if !picks.isEmpty { SuggestionBar(picks: picks, accept: accept, dismiss: dismiss) }
       if !queue.isEmpty { QueueView(queue: queue) }
       if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
-      HStack(alignment: .bottom, spacing: 8) {
-        TextField("Message", text: $draft, axis: .vertical)
+      VStack(alignment: .leading, spacing: 8) {
+        TextField("Message…", text: $draft, axis: .vertical)
           .lineLimit(1...6)
-          .textFieldStyle(.roundedBorder)
           .onKeyPress(.tab) {
             guard let first = picks.first else { return .ignored }
             accept(first)
@@ -56,13 +59,22 @@ struct ComposerView: View {
             dismiss()
             return .handled
           }
-        if isRunning {
-          Button("Abort", systemImage: "stop.circle.fill", role: .destructive) { run { try await client.abort() } }
-            .labelStyle(.iconOnly)
-            .font(.title)
+        HStack(spacing: 8) {
+          ModelButton(status: status, action: pickModel).disabled(!isLive)
+          Spacer(minLength: 0)
+          Text(usage).font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
+          if isRunning {
+            Button("Abort", systemImage: "stop.circle.fill", role: .destructive) { run { try await client.abort() } }
+              .labelStyle(.iconOnly)
+              .font(.title)
+          }
+          if canSend { sendButton }
         }
-        sendButton
+        .frame(minHeight: 32)  // keeps the row steady as the send button comes and goes
       }
+      .padding(10)
+      .background(.background, in: .rect(cornerRadius: 20))
+      .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.separator))
     }
     .padding(.horizontal)
     .padding(.vertical, 8)
@@ -77,6 +89,13 @@ struct ComposerView: View {
       do { try await Task.sleep(for: .milliseconds(120)) } catch { return }  // debounce typing
       files = (try? await client.searchFiles(query)) ?? []
     }
+  }
+
+  /// Context fill and price, e.g. `18.8k/1.0M • $2.39`.
+  private var usage: String {
+    [status.contextUsage, status.cost.formatted(.currency(code: "USD"))]
+      .compactMap { $0 }
+      .joined(separator: " • ")
   }
 
   private func accept(_ pick: Suggestions.Pick) {
@@ -97,12 +116,10 @@ struct ComposerView: View {
       } primaryAction: {
         send(.steer)
       }
-      .disabled(!canSend)
     } else {
       Button("Send", systemImage: "arrow.up.circle.fill") { send(.steer) }
         .labelStyle(.iconOnly)
         .font(.title)
-        .disabled(!canSend)
     }
   }
 
@@ -123,6 +140,35 @@ struct ComposerView: View {
         if let text { draft = text }
       }
     }
+  }
+}
+
+/// Provider, model and thinking level of the session, as one tappable pill.
+private struct ModelButton: View {
+  let status: Transcript.Status
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 4) {
+        if let name = status.modelName {
+          if let provider = status.provider { Text(provider) }
+          Text(name)
+        } else {
+          Text("No model")
+        }
+        // Models that can't think have only `off`; no point saying so.
+        if let level = status.thinkingLevel, status.thinkingLevels.count > 1 {
+          Text(level).foregroundStyle(.secondary)
+        }
+      }
+      .font(.caption)
+      .lineLimit(1)
+    }
+    .buttonStyle(.bordered)
+    .buttonBorderShape(.capsule)
+    .controlSize(.small)
+    .tint(.primary)
   }
 }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Sheet listing the models the joined session can switch to, grouped by provider, to pick one.
+/// Sheet to set the joined session's thinking level, and to pick a model from those it can switch
+/// to, grouped by provider.
 struct ModelsView: View {
   let client: BridgeClient
 
@@ -24,6 +25,7 @@ struct ModelsView: View {
     NavigationStack {
       List {
         if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
+        thinkingPicker
         if models?.isEmpty == true {
           ContentUnavailableView(
             "No models", systemImage: "cpu", description: Text("Log in to a provider in pi with /login."))
@@ -44,6 +46,16 @@ struct ModelsView: View {
         ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
       }
       .task { await load() }
+    }
+  }
+
+  /// Hidden for models that can't think (their only level is `off`) and while searching.
+  @ViewBuilder private var thinkingPicker: some View {
+    let status = client.transcript.status
+    if query.isEmpty, status.thinkingLevels.count > 1, let level = status.thinkingLevel {
+      Picker("Thinking", selection: Binding(get: { level }, set: setThinkingLevel)) {
+        ForEach(status.thinkingLevels, id: \.self) { Text($0.capitalized).tag($0) }
+      }
     }
   }
 
@@ -69,7 +81,19 @@ struct ModelsView: View {
     }
   }
 
-  /// Switches and closes the sheet on success; the status bar then shows the new model.
+  /// Stays open: the picker follows once pi's status reports the new level.
+  private func setThinkingLevel(_ level: String) {
+    Task {
+      do {
+        try await client.setThinkingLevel(level)
+        failure = nil
+      } catch {
+        failure = error.localizedDescription
+      }
+    }
+  }
+
+  /// Switches and closes the sheet on success; the composer then shows the new model.
   private func select(_ model: ModelInfo) {
     Task {
       do {

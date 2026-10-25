@@ -26,6 +26,8 @@ export class FakeGateway implements SessionGateway {
   modelList: ModelInfo[] = [];
   /** `[provider, id]` of every `setModel` that succeeded. */
   readonly selectedModels: Array<[string, string]> = [];
+  /** Every level `setThinkingLevel` was asked for. */
+  readonly thinkingLevels: string[] = [];
   /** Workspace files `searchFiles` draws from, filtered by simple substring match. */
   files: string[] = [];
   /** The `(query, limit)` of every `searchFiles` call. */
@@ -58,6 +60,7 @@ export class FakeGateway implements SessionGateway {
     models: () => this.modelList,
     setModel: async (provider, id) =>
       void this.selectedModels.push([provider, id]),
+    setThinkingLevel: (level) => void this.thinkingLevels.push(level),
     stats: () => this.statistics,
   };
 

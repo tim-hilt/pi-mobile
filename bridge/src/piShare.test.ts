@@ -22,7 +22,9 @@ class FakeHost implements PiHost {
   name: string | undefined;
   cwd = "/work";
   commandList: Array<Partial<SlashCommandInfo>> = [];
-  modelId: string | undefined;
+  activeModel: ModelInfo | undefined;
+  level = "off";
+  levels = ["off"];
   context: { tokens: number | null; contextWindow: number } | undefined;
   /** Pi's models carry much more than the share passes on. */
   modelList: Array<ModelInfo & Record<string, unknown>> = [];
@@ -48,7 +50,12 @@ class FakeHost implements PiHost {
   sessionId = () => this.id;
   sessionName = () => this.name;
   commands = () => this.commandList as SlashCommandInfo[];
-  model = () => this.modelId;
+  model = () => this.activeModel;
+  thinkingLevel = () => this.level;
+  thinkingLevels = () => this.levels;
+  setThinkingLevel = (level: string) => {
+    this.level = level;
+  };
   contextUsage = () => this.context;
   models = () => this.modelList;
   setModel = async (provider: string, id: string) => {
@@ -466,15 +473,30 @@ test("the first user message of an empty session updates its preview", () => {
   ]);
 });
 
-test("the history carries the status: model, context use and the session's price", () => {
+const opus = { provider: "anthropic", id: "opus", name: "Claude Opus" };
+const opusStatus = {
+  model: "opus",
+  provider: "anthropic",
+  modelName: "Claude Opus",
+  thinkingLevel: "off",
+  thinkingLevels: ["off"],
+};
+
+test("the history carries the status: model, thinking, context use and the session's price", () => {
   const { host, share } = setup();
-  host.modelId = "opus";
+  host.activeModel = opus;
+  host.level = "medium";
+  host.levels = ["off", "low", "medium", "high"];
   host.context = { tokens: 18_800, contextWindow: 1_000_000 };
   host.messages = [{ role: "assistant", content: [], usage: usage(10, 0.4) }];
   host.extraEntries = [{ type: "usage", usage: usage(5, 0.02) }];
 
   expect(share.history()).toMatchObject({
     model: "opus",
+    provider: "anthropic",
+    modelName: "Claude Opus",
+    thinkingLevel: "medium",
+    thinkingLevels: ["off", "low", "medium", "high"],
     contextTokens: 18_800,
     contextWindow: 1_000_000,
     cost: expect.closeTo(0.42),
@@ -486,14 +508,14 @@ test("the status leaves out what pi doesn't know", () => {
   const { messages, steering, followUp, ...status } = share.history();
   expect(status).toEqual({ cost: 0 });
 
-  host.modelId = "opus";
+  host.activeModel = opus;
   host.context = { tokens: null, contextWindow: 200_000 };
   const { messages: _, ...compacted } = share.history();
   expect(compacted).toMatchObject({ model: "opus", contextWindow: 200_000 });
   expect(compacted).not.toHaveProperty("contextTokens");
 });
 
-test("the status is sent when a turn, run, model switch, compaction or tree move changed it", () => {
+test("the status is sent when a turn, run, model or thinking switch, compaction or tree move changed it", () => {
   const { host, events, emit } = setup();
   const statuses = () => events().filter((e) => e.name === "status");
 
@@ -503,26 +525,36 @@ test("the status is sent when a turn, run, model switch, compaction or tree move
   expect(statuses()).toEqual([]);
   emit({ type: "turn_end" });
   emit({ type: "agent_settled", aborted: false }); // unchanged
-  host.modelId = "opus";
+  host.activeModel = opus;
   emit({ type: "model_select" });
   host.context = { tokens: null, contextWindow: 1000 };
   emit({ type: "session_compact" });
   host.context = { tokens: 50, contextWindow: 1000 };
   emit({ type: "session_tree" });
+  host.level = "high";
+  emit({ type: "thinking_level_select" });
 
   expect(statuses()).toEqual([
     { name: "status", contextTokens: 100, contextWindow: 1000, cost: 0 },
     {
       name: "status",
-      model: "opus",
+      ...opusStatus,
       contextTokens: 100,
       contextWindow: 1000,
       cost: 0,
     },
-    { name: "status", model: "opus", contextWindow: 1000, cost: 0 },
+    { name: "status", ...opusStatus, contextWindow: 1000, cost: 0 },
     {
       name: "status",
-      model: "opus",
+      ...opusStatus,
+      contextTokens: 50,
+      contextWindow: 1000,
+      cost: 0,
+    },
+    {
+      name: "status",
+      ...opusStatus,
+      thinkingLevel: "high",
       contextTokens: 50,
       contextWindow: 1000,
       cost: 0,
@@ -550,4 +582,12 @@ test("setting the model asks pi to switch, and fails when pi can't", async () =>
 
   await expect(refused).rejects.toThrow("no API key for anthropic");
   expect(host.selected).toEqual([["anthropic", "opus"]]);
+});
+
+test("setting the thinking level asks pi to switch", () => {
+  const { host, share } = setup();
+
+  share.setThinkingLevel("high");
+
+  expect(host.level).toBe("high");
 });

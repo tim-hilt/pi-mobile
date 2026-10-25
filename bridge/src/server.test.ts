@@ -733,6 +733,28 @@ test("setModel switches the session's model; pi refusing becomes an error result
   expect(gateway.selectedModels).toEqual([["anthropic", "opus"]]);
 });
 
+test("setThinkingLevel switches the session's thinking level", async () => {
+  const gateway = new FakeGateway();
+  const c = await ready(await bridge(undefined, gateway));
+
+  c.send(command(2, "setThinkingLevel", { level: "high" }));
+
+  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
+  expect(gateway.thinkingLevels).toEqual(["high"]);
+});
+
+test("setThinkingLevel without a string level is invalidParams", async () => {
+  const c = await ready(await bridge());
+
+  c.send(command(2, "setThinkingLevel", { level: 1 }));
+
+  expect(await c.next()).toMatchObject({
+    type: "result",
+    id: 2,
+    error: { code: "invalidParams" },
+  });
+});
+
 test.each([
   ["missing provider", { id: "opus" }],
   ["non-string id", { provider: "anthropic", id: 1 }],
@@ -974,6 +996,7 @@ test.each([
   ["searchFiles", { query: "a" }],
   ["listModels", {}],
   ["setModel", { provider: "anthropic", id: "opus" }],
+  ["setThinkingLevel", { level: "high" }],
 ])("%s before joining a session is refused", async (name, params) => {
   const c = await greeted(await bridge());
 
