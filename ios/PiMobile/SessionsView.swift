@@ -90,7 +90,7 @@ private struct SessionRow: View {
           .font(.subheadline)
           .foregroundStyle(.secondary)
         }
-        Text(session.title).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+        Text(session.title).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
       }
     }
   }

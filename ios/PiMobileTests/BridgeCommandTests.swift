@@ -253,6 +253,20 @@ extension BridgeCommandTests {
     #expect(list[0].activeAt == Date(timeIntervalSince1970: 1_735_787_045))
   }
 
+  @Test func sessionTitleIsOnlyItsFirstLine() throws {
+    func title(name: String?, preview: String) throws -> String {
+      var json: [String: Any] = [
+        "id": "s", "cwd": "/", "preview": preview, "running": false, "activeAt": "2025-01-01T00:00:00.000Z",
+      ]
+      json["name"] = name
+      let data = try JSONSerialization.data(withJSONObject: json)
+      return try JSONDecoder().decode(LiveSession.self, from: data).title
+    }
+    #expect(try title(name: nil, preview: "first\nsecond") == "first")
+    #expect(try title(name: "name\r\nmore", preview: "x") == "name")
+    #expect(try title(name: nil, preview: "\nsecond") == "second")
+  }
+
   @Test func rejoiningASessionTheBridgeNoLongerHasMarksItEnded() async throws {
     let (client, bridge, _) = try await connected(
       onConnect: event(1, "transcript", #"{"sessionId":"s1","running":false,"messages":[]}"#)

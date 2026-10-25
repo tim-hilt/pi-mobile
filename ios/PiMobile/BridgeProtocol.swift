@@ -302,8 +302,11 @@ struct LiveSession: Decodable, Equatable, Identifiable, Sendable {
   /// When the session last did anything.
   let activeAt: Date
 
-  /// What to call the session in a list: its name, else how it began.
-  var title: String { name ?? (preview.isEmpty ? "New session" : preview) }
+  /// What to call the session in a list: its name, else how it began. Only the first line.
+  var title: String {
+    let full = name ?? (preview.isEmpty ? "New session" : preview)
+    return full.split(whereSeparator: \.isNewline).first.map(String.init) ?? full
+  }
 
   /// What the session is up to.
   enum Activity: Equatable, Sendable {
