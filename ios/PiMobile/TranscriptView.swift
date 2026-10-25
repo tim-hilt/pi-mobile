@@ -1,16 +1,19 @@
 import SwiftUI
 
 /// One session's synced conversation, newest at the bottom, with the composer (which shows the
-/// session's status) below it. Shows the session (joining it) when it appears.
+/// session's status) below it. Shows the session (joining it) when it appears, and goes back to
+/// the session list once pi ends it.
 struct TranscriptView: View {
   let client: BridgeClient
   let sessionId: String
 
   @State private var showingModels = false
+  @Environment(\.dismiss) private var dismiss
 
-  /// Until the join lands, `client.transcript` still holds the previously shown session.
-  private var isShown: Bool { client.transcript.sessionId == sessionId }
-  private var isLive: Bool { isShown && client.state == .connected && !client.transcript.hasEnded }
+  /// Until the join lands, `client.transcript` still holds the previously shown session, or this
+  /// one as it ended.
+  private var isShown: Bool { client.transcript.sessionId == sessionId && !client.transcript.hasEnded }
+  private var isLive: Bool { isShown && client.state == .connected }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -28,6 +31,11 @@ struct TranscriptView: View {
     .sheet(isPresented: $showingModels) { ModelsView(client: client).presentationDetents([.medium, .large]) }
     // The client joins it once connected, and again after every reconnect.
     .task(id: sessionId) { client.show(sessionId: sessionId) }
+    // Ended while on show, live or found out on rejoining. Reopening an ended session doesn't
+    // trigger this: it stays ended until a successful join's snapshot.
+    .onChange(of: client.transcript.hasEnded) { _, hasEnded in
+      if hasEnded && client.transcript.sessionId == sessionId { dismiss() }
+    }
   }
 
   private var lostConnection: some View {
@@ -51,9 +59,7 @@ struct TranscriptView: View {
           }
         }
         .containerRelativeFrame(.vertical)
-      } else if transcript.entries.isEmpty && transcript.streaming == nil && !transcript.isRunning
-        && !transcript.hasEnded
-      {
+      } else if transcript.entries.isEmpty && transcript.streaming == nil && !transcript.isRunning {
         ContentUnavailableView("No messages yet", systemImage: "text.bubble").containerRelativeFrame(.vertical)
       } else {
         LazyVStack(alignment: .leading, spacing: 12) {
@@ -66,9 +72,7 @@ struct TranscriptView: View {
           }
           if let message = transcript.streaming { MessageView(message: message, isStreaming: true) }
           if let startedAt = transcript.runStartedAt { RunningView(startedAt: startedAt) }
-          if transcript.hasEnded {
-            Label("Session ended in pi", systemImage: "power").font(.footnote).foregroundStyle(.secondary)
-          } else if client.state == .offline {
+          if client.state == .offline {
             Label("Lost connection", systemImage: "network.slash").font(.footnote).foregroundStyle(.secondary)
           }
         }
