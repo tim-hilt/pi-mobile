@@ -3,10 +3,9 @@ import Testing
 
 @testable import PiMobile
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3}}"# + "\n"
+nonisolated private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3}}"# + "\n"
 
 /// Waits until `client.state` satisfies `predicate`, failing the test after 5 s.
-@MainActor
 private func waitFor(
   _ client: BridgeClient, _ predicate: (ConnectionState) -> Bool,
   sourceLocation: SourceLocation = #_sourceLocation
@@ -17,7 +16,6 @@ private func waitFor(
   #expect(predicate(client.state), "state was \(client.state)", sourceLocation: sourceLocation)
 }
 
-@MainActor
 @Suite struct BridgeClientTests {
   @Test func connectsWithTokenAndNegotiatesVersion() async throws {
     let received = Box<String>()
@@ -144,7 +142,7 @@ private func waitFor(
 }
 
 /// Lock-protected mutable cell for sharing a value with the fake bridge's queue.
-final class Box<Value: Sendable>: @unchecked Sendable {
+nonisolated final class Box<Value: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
   private var stored: Value?
   var value: Value? {

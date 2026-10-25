@@ -8,7 +8,8 @@ import Network
 ///
 /// Speaks RFC 6455 by hand over TCP: Network.framework's WebSocket server cannot
 /// answer an upgrade with a plain 401.
-final class FakeBridge: @unchecked Sendable {
+/// Runs on its own queue, not the main actor the tests default to.
+nonisolated final class FakeBridge: @unchecked Sendable {
   /// One accepted client connection, handed to the script.
   struct Peer: @unchecked Sendable {
     fileprivate let connection: NWConnection

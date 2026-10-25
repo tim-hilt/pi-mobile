@@ -1,4 +1,5 @@
 import SwiftUI
+import Vision
 import VisionKit
 
 /// Sheet with a camera view that reads the bridge's pairing QR code and hands over its config.
@@ -26,7 +27,7 @@ struct PairingScanner: View {
       .navigationTitle("Scan QR Code")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+        ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } }
       }
     }
   }

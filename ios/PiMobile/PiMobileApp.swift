@@ -32,11 +32,7 @@ struct PiMobileApp: App {
         case nil: break
         }
       }
-      .alert(
-        "Connect to \(pendingPairing?.url.host() ?? "bridge")?",
-        isPresented: Binding(get: { pendingPairing != nil }, set: { if !$0 { pendingPairing = nil } }),
-        presenting: pendingPairing
-      ) { config in
+      .alert("Connect to \(pendingPairing?.url.host() ?? "bridge")?", item: $pendingPairing) { config in
         Button("Connect") { pair(config) }
         Button("Cancel", role: .cancel) {}
       } message: { config in

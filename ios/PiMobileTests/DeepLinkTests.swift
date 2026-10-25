@@ -3,7 +3,6 @@ import Testing
 
 @testable import PiMobile
 
-@MainActor
 @Suite struct DeepLinkTests {
   // MARK: Parsing
 

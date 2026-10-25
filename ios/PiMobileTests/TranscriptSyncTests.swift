@@ -3,18 +3,17 @@ import Testing
 
 @testable import PiMobile
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3,"epoch":"e1"}}"# + "\n"
+nonisolated private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3,"epoch":"e1"}}"# + "\n"
 
-private func event(_ seq: Int, _ name: String, _ data: String) -> String {
+nonisolated private func event(_ seq: Int, _ name: String, _ data: String) -> String {
   #"{"type":"event","seq":\#(seq),"name":"\#(name)","data":\#(data)}"# + "\n"
 }
 
-private func delta(_ seq: Int, _ kind: String, _ text: String) -> String {
+nonisolated private func delta(_ seq: Int, _ kind: String, _ text: String) -> String {
   event(seq, "delta", #"{"kind":"\#(kind)","text":"\#(text)"}"#)
 }
 
 /// Waits until `condition` holds, failing the test after 5 s.
-@MainActor
 private func waitUntil(
   _ description: String, sourceLocation: SourceLocation = #_sourceLocation,
   _ condition: () -> Bool
@@ -30,7 +29,6 @@ private func lines(_ transcript: Transcript) -> [String] {
   }
 }
 
-@MainActor
 @Suite struct TranscriptSyncTests {
   /// Connects a fresh client to a bridge that answers every `hello` with `reply(helloNumber, frame)`.
   private func connect(

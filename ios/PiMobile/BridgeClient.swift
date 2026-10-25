@@ -42,7 +42,7 @@ enum PromptMode: String, Sendable {
 /// Commands are async: they return once the bridge has answered and throw its `ProtocolError`,
 /// or `CommandError` if the connection is not usable. Their effects show up in `transcript`
 /// through the events the bridge streams, never through the return value.
-@MainActor @Observable
+@Observable
 final class BridgeClient {
   private(set) var state = ConnectionState.offline
   /// The live pi sessions, most recently active first; nil until the bridge has listed them.

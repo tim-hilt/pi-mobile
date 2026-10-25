@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Message entry below the transcript: send a prompt when idle; during a run, steer or queue a
-/// follow-up, abort, and see what is still queued. Typing `/` offers the session's
-/// skills and `@` its files; Tab (hardware keyboard) takes the first suggestion, Esc dismisses.
+/// Message entry floating over the bottom of the transcript: send a prompt when idle; during a
+/// run, steer or queue a follow-up, abort, and see what is still queued. Typing `/` offers the
+/// session's skills and `@` its files; Tab (hardware keyboard) takes the first suggestion, Esc dismisses.
 /// Below the text sit the session's model and thinking level (tapping calls `pickModel`), its
 /// context fill and price; the send button shows only once there is something to send.
 struct ComposerView: View {
@@ -42,43 +42,44 @@ struct ComposerView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if !picks.isEmpty { SuggestionBar(picks: picks, accept: accept, dismiss: dismiss) }
-      if !queue.isEmpty { QueueView(queue: queue) }
-      if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
+    // Glass panels floating over the conversation; the container lets them sample each other.
+    GlassEffectContainer {
       VStack(alignment: .leading, spacing: 8) {
-        TextField("Message…", text: $draft, axis: .vertical)
-          .lineLimit(1...6)
-          .onKeyPress(.tab) {
-            guard let first = picks.first else { return .ignored }
-            accept(first)
-            return .handled
+        if !picks.isEmpty { SuggestionBar(picks: picks, accept: accept, dismiss: dismiss) }
+        if !queue.isEmpty { QueueView(queue: queue) }
+        if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
+        VStack(alignment: .leading, spacing: 8) {
+          TextField("Message…", text: $draft, axis: .vertical)
+            .lineLimit(1...6)
+            .onKeyPress(.tab) {
+              guard let first = picks.first else { return .ignored }
+              accept(first)
+              return .handled
+            }
+            .onKeyPress(.escape) {
+              guard trigger != nil else { return .ignored }
+              dismiss()
+              return .handled
+            }
+          HStack(spacing: 8) {
+            ModelButton(status: status, action: pickModel).disabled(!isLive)
+            Spacer(minLength: 0)
+            Text(usage).font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
+            if isRunning {
+              Button("Abort", systemImage: "stop.circle.fill", role: .destructive) { run { try await client.abort() } }
+                .labelStyle(.iconOnly)
+                .font(.title)
+            }
+            if canSend { sendButton }
           }
-          .onKeyPress(.escape) {
-            guard trigger != nil else { return .ignored }
-            dismiss()
-            return .handled
-          }
-        HStack(spacing: 8) {
-          ModelButton(status: status, action: pickModel).disabled(!isLive)
-          Spacer(minLength: 0)
-          Text(usage).font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
-          if isRunning {
-            Button("Abort", systemImage: "stop.circle.fill", role: .destructive) { run { try await client.abort() } }
-              .labelStyle(.iconOnly)
-              .font(.title)
-          }
-          if canSend { sendButton }
+          .frame(minHeight: 32)  // keeps the row steady as the send button comes and goes
         }
-        .frame(minHeight: 32)  // keeps the row steady as the send button comes and goes
+        .padding(10)
+        .glassEffect(in: .rect(cornerRadius: 20))
       }
-      .padding(10)
-      .background(.background, in: .rect(cornerRadius: 20))
-      .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.separator))
     }
     .padding(.horizontal)
     .padding(.vertical, 8)
-    .background(.bar)
     // Skills belong to the session: reload when joining another.
     .task(id: isLive ? sessionId : nil) {
       guard isLive else { return }
@@ -178,10 +179,10 @@ private struct QueueView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text("Queued").font(.footnote.bold())
-      ForEach(Array(queue.steering.enumerated()), id: \.offset) { _, text in
+      ForEach(queue.steering.enumerated(), id: \.offset) { _, text in
         row(text, symbol: "arrow.turn.down.right", label: "Steer")
       }
-      ForEach(Array(queue.followUp.enumerated()), id: \.offset) { _, text in
+      ForEach(queue.followUp.enumerated(), id: \.offset) { _, text in
         row(text, symbol: "clock", label: "Follow up")
       }
     }
@@ -225,8 +226,7 @@ private struct SuggestionBar: View {
       }
       .frame(maxHeight: 420)
     }
-    .background(.background, in: .rect(cornerRadius: 20))
-    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.separator))
+    .glassEffect(in: .rect(cornerRadius: 20))
   }
 
   private var title: String {
@@ -235,7 +235,7 @@ private struct SuggestionBar: View {
 
   private var rows: some View {
     VStack(spacing: 0) {
-      ForEach(Array(picks.enumerated()), id: \.element.label) { index, pick in
+      ForEach(picks.enumerated(), id: \.element.label) { index, pick in
         if index > 0 { Divider().padding(.leading, pick.isFile ? 46 : 14) }
         Button { accept(pick) } label: { row(pick) }
           .buttonStyle(.plain)

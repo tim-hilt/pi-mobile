@@ -3,17 +3,16 @@ import Testing
 
 @testable import PiMobile
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3}}"# + "\n"
+nonisolated private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3}}"# + "\n"
 
-private func result(_ id: Int, _ payload: String = "{}") -> String {
+nonisolated private func result(_ id: Int, _ payload: String = "{}") -> String {
   #"{"type":"result","id":\#(id),"result":\#(payload)}"# + "\n"
 }
 
-private func event(_ seq: Int, _ name: String, _ data: String) -> String {
+nonisolated private func event(_ seq: Int, _ name: String, _ data: String) -> String {
   #"{"type":"event","seq":\#(seq),"name":"\#(name)","data":\#(data)}"# + "\n"
 }
 
-@MainActor
 @Suite struct BridgeCommandTests {
   /// A client connected to a bridge that answers `hello` itself and hands every other frame to `reply`.
   private func connected(

@@ -16,17 +16,15 @@ struct TranscriptView: View {
   private var isLive: Bool { isShown && client.state == .connected }
 
   var body: some View {
-    VStack(spacing: 0) {
-      conversation
+    // The conversation scrolls on under the floating composer, blurred by the scroll edge effect.
+    conversation.safeAreaBar(edge: .bottom) {
       ComposerView(
         client: client, sessionId: sessionId, isLive: isLive, isRunning: client.transcript.isRunning,
         queue: client.transcript.queue, status: client.transcript.status
       ) { showingModels = true }
-      // Laid out before the conversation, so open suggestions get their full height.
-      .layoutPriority(1)
       .disabled(!isShown || client.state != .connected)
     }
-    .navigationTitle(isShown ? client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "" : "")
+    .navigationTitle(isShown ? client.transcript.cwd.map { URL(filePath: $0).lastPathComponent } ?? "" : "")
     .navigationBarTitleDisplayMode(.inline)
     .sheet(isPresented: $showingModels) { ModelsView(client: client).presentationDetents([.medium, .large]) }
     // The client joins it once connected, and again after every reconnect.
@@ -251,7 +249,7 @@ private struct ToolCallView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(6)
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.tertiary))
+            .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(.tertiary) }
         }
       }
       HStack(spacing: 6) {

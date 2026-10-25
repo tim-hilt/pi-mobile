@@ -43,7 +43,7 @@ struct ModelsView: View {
       .navigationTitle("Model")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+        ToolbarItem(placement: .cancellationAction) { Button(role: .close) { dismiss() } }
       }
       .task { await load() }
     }

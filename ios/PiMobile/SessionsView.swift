@@ -77,7 +77,7 @@ private struct SessionRow: View {
       ActivityIcon(activity: session.activity)
       VStack(alignment: .leading, spacing: 2) {
         HStack(alignment: .firstTextBaseline) {
-          Text(URL(fileURLWithPath: session.cwd).lastPathComponent).font(.headline).lineLimit(1)
+          Text(URL(filePath: session.cwd).lastPathComponent).font(.headline).lineLimit(1)
           Spacer()
           // The list only changes with the sessions; the relative time ages on its own.
           TimelineView(.everyMinute) { _ in
