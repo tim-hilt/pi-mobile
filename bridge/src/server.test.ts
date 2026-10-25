@@ -829,56 +829,6 @@ test("searchFiles clamps limit to 100 and survives a failing search", async () =
   });
 });
 
-test("getStats reports the session's counts and the runs measured by the bridge", async () => {
-  const gateway = new FakeGateway();
-  gateway.statistics = {
-    userMessages: 2,
-    assistantMessages: 3,
-    toolCalls: 5,
-    tokens: 1200,
-    cost: 0.25,
-  };
-  const c = await ready(await bridge(undefined, gateway));
-  for (let i = 0; i < 2; i++) {
-    gateway.emit({ name: "runStarted" });
-    gateway.emit({ name: "runSettled", stopReason: "success" });
-    await c.next();
-    await c.next();
-  }
-
-  c.send(command(2, "getStats", {}));
-
-  expect(await c.next()).toMatchObject({
-    id: 2,
-    result: {
-      userMessages: 2,
-      assistantMessages: 3,
-      toolCalls: 5,
-      tokens: 1200,
-      cost: 0.25,
-      runs: 2,
-    },
-  });
-});
-
-test("run stats restart when pi replaces the session", async () => {
-  const gateway = new FakeGateway();
-  const c = await ready(await bridge(undefined, gateway));
-  gateway.emit({ name: "runStarted" });
-  gateway.emit({ name: "runSettled", stopReason: "success" });
-  await c.next();
-  await c.next();
-
-  gateway.replace("s2");
-  await c.next();
-  c.send(command(3, "getStats", {}));
-
-  expect(await c.next()).toMatchObject({
-    id: 3,
-    result: { runs: 0, runDurationMs: 0 },
-  });
-});
-
 test("after hello the session list is pushed, most recently active first", async () => {
   const b = await bridge(undefined, null);
   const older = new FakeGateway("s1", { name: "Refactor", cwd: "/a" });
@@ -991,7 +941,6 @@ test("joining is refused for an unknown id or bad params", async () => {
 test.each([
   ["prompt", { text: "hi" }],
   ["abort", {}],
-  ["getStats", {}],
   ["listSkills", {}],
   ["searchFiles", { query: "a" }],
   ["listModels", {}],

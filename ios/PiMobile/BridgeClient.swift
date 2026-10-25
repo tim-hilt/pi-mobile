@@ -146,11 +146,6 @@ final class BridgeClient {
       [String].self, field: .files, from: await command("searchFiles", ["query": .string(query)]))
   }
 
-  /// Counts and run timing of the current session.
-  func stats() async throws -> SessionStats {
-    try BridgeProtocol.result(SessionStats.self, from: await command("getStats"))
-  }
-
   /// Joins the session on show, unless this connection already has (and it has not ended since).
   private func joinShownSession() {
     guard state == .connected, let id = shownId, id != joinedId || transcript.hasEnded else { return }

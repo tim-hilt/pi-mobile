@@ -1,7 +1,6 @@
 import type {
   CallMethod,
   GatewayEvent,
-  GatewayStats,
   ModelInfo,
   PromptMode,
   QueuedMessages,
@@ -32,14 +31,6 @@ export class FakeGateway implements SessionGateway {
   files: string[] = [];
   /** The `(query, limit)` of every `searchFiles` call. */
   readonly searches: Array<[string, number]> = [];
-  /** What the `stats` call reports. */
-  statistics: GatewayStats = {
-    userMessages: 0,
-    assistantMessages: 0,
-    toolCalls: 0,
-    tokens: 0,
-    cost: 0,
-  };
   aborts = 0;
   /** What `info()` reports. */
   current: SharedSessionInfo;
@@ -61,7 +52,6 @@ export class FakeGateway implements SessionGateway {
     setModel: async (provider, id) =>
       void this.selectedModels.push([provider, id]),
     setThinkingLevel: (level) => void this.thinkingLevels.push(level),
-    stats: () => this.statistics,
   };
 
   constructor(id = "s1", extra: Partial<SharedSessionInfo> = {}) {

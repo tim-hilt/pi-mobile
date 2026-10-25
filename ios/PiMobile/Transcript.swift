@@ -28,12 +28,32 @@ struct Transcript: Equatable, Sendable {
     /// The bridge's `toolCallId`, tying start, update and end together.
     let callId: String
     let name: String
+    /// When this client first saw the call: its start, unless joined mid-call.
+    let startedAt: Date
     fileprivate(set) var args: JSONValue?
     /// Output so far while running, the full output once finished.
     fileprivate(set) var output = ""
     fileprivate(set) var status = Status.running
     /// Nil until finished, and for a tool that never ran.
     fileprivate(set) var durationMs: Int?
+
+    /// The `command` argument (bash); nil for tools without one.
+    var command: String? {
+      guard case .object(let args) = args, case .string(let command) = args["command"] else { return nil }
+      return command
+    }
+
+    /// The `timeout` argument (bash), in seconds.
+    var timeoutSeconds: Double? {
+      guard case .object(let args) = args, case .number(let timeout) = args["timeout"] else { return nil }
+      return timeout
+    }
+
+    /// The last 5 lines of the output, as a running call previews them.
+    var outputTail: String {
+      output.split(separator: "\n", omittingEmptySubsequences: false)
+        .reversed().drop { $0.isEmpty }.prefix(5).reversed().joined(separator: "\n")
+    }
   }
 
   enum StopReason: String, Sendable {
@@ -151,7 +171,7 @@ struct Transcript: Equatable, Sendable {
       if streaming == nil { streaming = makeMessage(.assistant, text: "", thinking: "") }
       if isThinking { streaming?.thinking += text } else { streaming?.text += text }
     case .messageEnd(let text, let thinking): finishMessage(text: text, thinking: thinking)
-    case .toolCall(let phase): applyToolCall(phase)
+    case .toolCall(let phase): applyToolCall(phase, now: now)
     case .runSettled(let stopReason, let durationMs, let errorMessage):
       settleRun(stopReason: stopReason, durationMs: durationMs, errorMessage: errorMessage)
     case .sessionEnded: markEnded()
@@ -182,7 +202,7 @@ struct Transcript: Equatable, Sendable {
       case .assistant(let text, let thinking, streaming: true):
         streaming = makeMessage(.assistant, text: text, thinking: thinking)
       case .toolCall(let callId, let name, let args, let output, let isError):
-        var call = ToolCall(id: takeId(), callId: callId, name: name)
+        var call = ToolCall(id: takeId(), callId: callId, name: name, startedAt: now)
         call.args = args
         call.output = output ?? ""
         if let isError { call.status = isError ? .failed : .succeeded }
@@ -208,10 +228,10 @@ struct Transcript: Equatable, Sendable {
 
   /// Applies a tool phase to its card, creating the card if its `start` was never seen
   /// (e.g. the snapshot this client joined from was taken mid-call).
-  private mutating func applyToolCall(_ phase: SessionEvent.ToolCallPhase) {
+  private mutating func applyToolCall(_ phase: SessionEvent.ToolCallPhase, now: Date) {
     let index =
       entries.lastIndex { if case .toolCall(let call) = $0 { call.callId == phase.toolCallId } else { false } }
-      ?? appendToolCall(callId: phase.toolCallId, name: phase.toolName)
+      ?? appendToolCall(callId: phase.toolCallId, name: phase.toolName, now: now)
     guard case .toolCall(var call) = entries[index] else { return }
     if let args = phase.args { call.args = args }
     if let output = phase.output { call.output = output }
@@ -237,8 +257,8 @@ struct Transcript: Equatable, Sendable {
     streaming = nil
   }
 
-  private mutating func appendToolCall(callId: String, name: String) -> Int {
-    entries.append(.toolCall(ToolCall(id: takeId(), callId: callId, name: name)))
+  private mutating func appendToolCall(callId: String, name: String, now: Date) -> Int {
+    entries.append(.toolCall(ToolCall(id: takeId(), callId: callId, name: name, startedAt: now)))
     return entries.count - 1
   }
 

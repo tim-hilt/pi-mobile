@@ -350,20 +350,6 @@ struct LiveSession: Decodable, Equatable, Identifiable, Sendable {
   }
 }
 
-/// `getStats` result for the current session.
-struct SessionStats: Decodable, Equatable, Sendable {
-  let userMessages: Int
-  let assistantMessages: Int
-  let toolCalls: Int
-  /// Total tokens consumed over the whole session.
-  let tokens: Int
-  let cost: Double
-  /// Runs the bridge has seen settle since the session became current.
-  let runs: Int
-  /// Their total duration.
-  let runDurationMs: Int
-}
-
 /// Arbitrary JSON, for payloads the app only displays (tool call arguments).
 enum JSONValue: Codable, Equatable, Sendable {
   case null

@@ -62,7 +62,7 @@ Right after the `hello` result, and again whenever a session starts or ends, sta
 
 ## Commands
 
-`hello`, `joinSession`, `prompt`, `abort`, `getStats`, `listSkills`, `searchFiles`, `listModels`, `setModel`, `setThinkingLevel`. All but the first two concern the joined session; sent before joining → `error.code = "notJoined"`.
+`hello`, `joinSession`, `prompt`, `abort`, `listSkills`, `searchFiles`, `listModels`, `setModel`, `setThinkingLevel`. All but the first two concern the joined session; sent before joining → `error.code = "notJoined"`.
 
 ### `joinSession`
 
@@ -79,10 +79,6 @@ Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once pi has
 ### `abort`
 
 Params `{}`. Result `{}`. Stops the active run, which then settles with `stopReason: "aborted"`; a no-op when idle. Failure → `error.code = "sessionError"`.
-
-### `getStats`
-
-Params `{}`. Result for the current session: `{ userMessages, assistantMessages, toolCalls, tokens, cost, runs, runDurationMs }`. The first five come from pi and cover the whole session (`tokens` is the total, `cost` its price). `runs` and `runDurationMs` (total) count the runs the bridge has seen settle since it started sharing the session.
 
 ### `listSkills`
 

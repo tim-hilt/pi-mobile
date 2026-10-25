@@ -165,7 +165,6 @@ function serve(ws: WebSocket, pingIntervalMs: number, hub: SessionHub): void {
       return session().gateway.call("prompt", text, mode);
     },
     abort: () => session().gateway.call("abort"),
-    getStats: () => session().stats(),
     listSkills: async () => ({
       skills: await session().gateway.call("skills"),
     }),

@@ -410,33 +410,6 @@ test("skills are pi's skill commands, by name and description", () => {
   ]);
 });
 
-test("stats count the whole session, across branches", () => {
-  const { host, share } = setup();
-  host.messages = [
-    { role: "user", content: "hi" },
-    {
-      role: "assistant",
-      content: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }],
-      usage: usage(100, 0.1),
-    },
-  ];
-  host.extraEntries = [
-    { type: "usage", usage: usage(50, 0.05) },
-    {
-      type: "message",
-      message: { role: "assistant", content: [], usage: usage(10, 0.01) },
-    },
-  ];
-
-  expect(share.stats()).toEqual({
-    userMessages: 1,
-    assistantMessages: 2,
-    toolCalls: 1,
-    tokens: 160,
-    cost: expect.closeTo(0.16),
-  });
-});
-
 test("the session introduces itself by id, name, directory and first message", () => {
   const { host, share } = setup();
   host.name = "refactor";

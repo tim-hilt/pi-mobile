@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
   GatewayEvent,
-  GatewayStats,
   SessionGateway,
   SessionHistory,
   SharedSessionInfo,
@@ -14,14 +13,6 @@ export interface BridgeEvent {
   seq: number;
   name: string;
   data: Record<string, unknown>;
-}
-
-/** `GatewayStats` plus the run timing only the bridge observes. */
-export interface SessionStats extends GatewayStats {
-  /** Runs that settled since this session became current. */
-  runs: number;
-  /** Their total duration. */
-  runDurationMs: number;
 }
 
 /** A live session as `getSessions` lists it. */
@@ -61,8 +52,6 @@ export class Session {
   private lastStopReason: StopReason | undefined;
   /** Newest events, oldest first; holds `seq - log.length + 1 .. seq`. */
   private log: BridgeEvent[] = [];
-  private runs = 0;
-  private runDurationMs = 0;
   private activeAt = new Date();
   /** The assistant message being generated: its deltas so far, not yet in the gateway's history. */
   private streaming: { text: string; thinking: string } | undefined;
@@ -117,15 +106,6 @@ export class Session {
       this.sendSnapshot([listener]);
     }
     return () => this.listeners.delete(listener);
-  }
-
-  /** The session's counts, with the runs this bridge has timed for it. */
-  async stats(): Promise<SessionStats> {
-    return {
-      ...(await this.gateway.call("stats")),
-      runs: this.runs,
-      runDurationMs: this.runDurationMs,
-    };
   }
 
   /** Pi stopped sharing: joined clients get `sessionEnded`, then nothing more. */
@@ -196,8 +176,6 @@ export class Session {
     this.runStartedAt = undefined;
     this.lastStopReason = undefined;
     this.streaming = undefined;
-    this.runs = 0;
-    this.runDurationMs = 0;
     this.log = [];
     this.seq++;
     this.options.onChange();
@@ -227,8 +205,6 @@ export class Session {
       this.runStartedAt = undefined;
       this.lastStopReason = event.stopReason;
       this.streaming = undefined;
-      this.runs++;
-      this.runDurationMs += durationMs;
       Object.assign(data, { durationMs });
       const { id, cwd, name: sessionName } = this.gateway.info();
       this.options.onChange();

@@ -295,24 +295,4 @@ extension BridgeCommandTests {
     #expect(client.showFailure == "gone")
     #expect(client.transcript.hasEnded)
   }
-
-  @Test func statsReturnTheSessionsCountsAndRunTiming() async throws {
-    let (client, bridge, received) = try await connected { _, peer in
-      peer.send(
-        result(
-          2,
-          #"{"userMessages":2,"assistantMessages":3,"toolCalls":5,"tokens":1200,"cost":0.25,"runs":2,"runDurationMs":65000}"#
-        ))
-    }
-    defer { bridge.stop() }
-
-    let stats = try await client.stats()
-
-    #expect(
-      stats
-        == SessionStats(
-          userMessages: 2, assistantMessages: 3, toolCalls: 5, tokens: 1200, cost: 0.25, runs: 2,
-          runDurationMs: 65000))
-    #expect(received.value?.first?.contains(#""name":"getStats""#) == true)
-  }
 }

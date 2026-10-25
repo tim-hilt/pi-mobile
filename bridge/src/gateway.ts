@@ -37,8 +37,6 @@ export interface ShareCalls {
    * other levels to what the model supports. The change shows as a `status` event.
    */
   setThinkingLevel(level: string): void;
-  /** Message, tool and token counts of the whole session. */
-  stats(): GatewayStats;
 }
 
 /** The `ShareCalls` the bridge makes through `SessionGateway.call`; `history` has its own path. */
@@ -122,15 +120,6 @@ export interface ModelInfo {
   id: string;
   /** Human-readable name. */
   name: string;
-}
-
-/** What the session has consumed so far; `tokens` and `cost` cover the whole session. */
-export interface GatewayStats {
-  userMessages: number;
-  assistantMessages: number;
-  toolCalls: number;
-  tokens: number;
-  cost: number;
 }
 
 /** Texts waiting to enter the run, oldest first. */

@@ -5,7 +5,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type {
   GatewayEvent,
-  GatewayStats,
   ModelInfo,
   PromptMode,
   QueuedMessages,
@@ -295,7 +294,7 @@ export class PiShare implements ShareCalls {
         contextTokens: context.tokens,
       }),
       ...(context && { contextWindow: context.contextWindow }),
-      cost: this.stats().cost,
+      cost: this.cost(),
     };
   }
 
@@ -318,40 +317,19 @@ export class PiShare implements ShareCalls {
       }));
   }
 
-  /** Counts over the whole session, as pi's `/session` reports them. */
-  stats(): GatewayStats {
-    const stats = {
-      userMessages: 0,
-      assistantMessages: 0,
-      toolCalls: 0,
-      tokens: 0,
-      cost: 0,
-    };
-    const addUsage = (usage?: PiUsage) => {
-      if (!usage) return;
-      stats.tokens +=
-        usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-      stats.cost += usage.cost.total;
-    };
+  /** Price of the whole session, across branches, as pi's `/session` reports it. */
+  private cost(): number {
+    let cost = 0;
     for (const entry of this.host.entries() as Array<
       SessionEntry & { usage?: PiUsage }
     >) {
-      if (entry.type !== "message") {
-        addUsage(entry.usage);
-        continue;
-      }
-      const message = entry.message as PiMessage;
-      if (message.role === "user") stats.userMessages++;
-      else if (message.role === "toolResult") addUsage(message.usage);
-      else if (message.role === "assistant") {
-        stats.assistantMessages++;
-        stats.toolCalls += message.content.filter(
-          (c) => c.type === "toolCall"
-        ).length;
-        addUsage(message.usage);
-      }
+      const usage =
+        entry.type === "message"
+          ? (entry.message as PiMessage & { usage?: PiUsage }).usage
+          : entry.usage;
+      cost += usage?.cost.total ?? 0;
     }
-    return stats;
+    return cost;
   }
 
   /** The text of the branch's first user message, `""` if none. */

@@ -7,7 +7,6 @@ struct TranscriptView: View {
   let sessionId: String
 
   @State private var showingModels = false
-  @State private var showingStats = false
 
   /// Until the join lands, `client.transcript` still holds the previously shown session.
   private var isShown: Bool { client.transcript.sessionId == sessionId }
@@ -24,11 +23,7 @@ struct TranscriptView: View {
     }
     .navigationTitle(isShown ? client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "" : "")
     .navigationBarTitleDisplayMode(.inline)
-    .toolbar {
-      Button("Stats", systemImage: "info.circle") { showingStats = true }.disabled(!isLive)
-    }
     .sheet(isPresented: $showingModels) { ModelsView(client: client).presentationDetents([.medium, .large]) }
-    .sheet(isPresented: $showingStats) { StatsView(client: client) }
     // The client joins it once connected, and again after every reconnect.
     .task(id: sessionId) { client.show(sessionId: sessionId) }
   }
@@ -80,43 +75,6 @@ struct TranscriptView: View {
     }
     .defaultScrollAnchor(.bottom)
     .scrollDismissesKeyboard(.interactively)
-  }
-}
-
-/// Sheet with the shown session's counts, run timing and cost.
-private struct StatsView: View {
-  let client: BridgeClient
-
-  @Environment(\.dismiss) private var dismiss
-  @State private var stats: SessionStats?
-  @State private var failure: String?
-
-  var body: some View {
-    NavigationStack {
-      List {
-        if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
-        if let stats {
-          LabeledContent("Runs", value: "\(stats.runs) · \(format(durationMs: stats.runDurationMs))")
-          LabeledContent("Messages", value: "\(stats.userMessages) sent · \(stats.assistantMessages) replies")
-          LabeledContent("Tool calls", value: "\(stats.toolCalls)")
-          LabeledContent("Tokens", value: stats.tokens.formatted())
-          LabeledContent("Cost", value: stats.cost.formatted(.currency(code: "USD")))
-        }
-      }
-      .navigationTitle("Stats")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-      }
-      .task {
-        do {
-          stats = try await client.stats()
-        } catch {
-          failure = error.localizedDescription
-        }
-      }
-    }
-    .presentationDetents([.medium])
   }
 }
 
@@ -204,14 +162,21 @@ private struct MarkdownView: View {
   }
 }
 
-/// A tool execution: name and duration in the header, expandable to arguments and output.
+/// A tool execution. Running, it previews its command, output tail and elapsed time; finished,
+/// it collapses to its outcome and duration. Expanding shows the command (or arguments) and output.
 private struct ToolCallView: View {
   let call: Transcript.ToolCall
 
+  @State private var isExpanded = false
+
   var body: some View {
-    DisclosureGroup {
+    DisclosureGroup(isExpanded: $isExpanded) {
       VStack(alignment: .leading, spacing: 6) {
-        if let args = call.args { Text(args.formatted).textSelection(.enabled) }
+        if let command = call.command {
+          Text(command).textSelection(.enabled)
+        } else if let args = call.args {
+          Text(args.formatted).textSelection(.enabled)
+        }
         if !call.output.isEmpty {
           Divider()
           Text(call.output).textSelection(.enabled)
@@ -220,21 +185,50 @@ private struct ToolCallView: View {
       .font(.caption.monospaced())
       .frame(maxWidth: .infinity, alignment: .leading)
     } label: {
-      HStack {
-        switch call.status {
-        case .running: ProgressView().controlSize(.small)
-        case .succeeded: Image(systemName: "checkmark.circle").foregroundStyle(.green)
-        case .failed: Image(systemName: "xmark.circle").foregroundStyle(.red)
-        }
-        Text(call.name).font(.subheadline.monospaced())
-        Spacer()
-        if let durationMs = call.durationMs {
-          Text(format(durationMs: durationMs)).font(.caption).foregroundStyle(.secondary)
-        }
-      }
+      if call.status == .running { running } else { finished }
     }
     .padding(10)
     .background(.quaternary, in: .rect(cornerRadius: 10))
+  }
+
+  private var finished: some View {
+    HStack {
+      Image(systemName: call.status == .failed ? "xmark.circle" : "checkmark.circle")
+        .foregroundStyle(call.status == .failed ? .red : .green)
+      Text(call.name).font(.subheadline.monospaced())
+      Spacer()
+      if let durationMs = call.durationMs {
+        Text("took \(format(durationMs: durationMs))").font(.caption).foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  private var running: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack {
+        ProgressView().controlSize(.small)
+        Text(call.name).font(.subheadline.monospaced())
+      }
+      if !isExpanded {
+        if let command = call.command {
+          Text(command.replacing("\n", with: " ")).font(.caption.monospaced()).lineLimit(1)
+        }
+        let tail = call.outputTail
+        if !tail.isEmpty {
+          Text(tail)
+            .font(.caption2.monospaced())
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(6)
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.tertiary))
+        }
+      }
+      ElapsedText(since: call.startedAt) { elapsed in
+        call.timeoutSeconds.map { "\(elapsed) (timeout \(format(seconds: $0)))" } ?? elapsed
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+    }
   }
 }
 
@@ -243,13 +237,21 @@ private struct RunningView: View {
   let startedAt: Date
 
   var body: some View {
-    HStack(spacing: 6) {
-      ProgressView().controlSize(.small)
-      Text("Running")
-      Text(startedAt, style: .timer).monospacedDigit()
+    ElapsedText(since: startedAt) { "Running for \($0)…" }
+      .font(.footnote)
+      .foregroundStyle(.secondary)
+  }
+}
+
+/// Whole seconds since `start`, e.g. `31m 21s`, updated every second and put into words by `text`.
+private struct ElapsedText: View {
+  let since: Date
+  var text: (String) -> String = { $0 }
+
+  var body: some View {
+    TimelineView(.periodic(from: since, by: 1)) { context in
+      Text(text(format(seconds: max(0, context.date.timeIntervalSince(since))))).monospacedDigit()
     }
-    .font(.footnote)
-    .foregroundStyle(.secondary)
   }
 }
 
@@ -275,6 +277,11 @@ private struct RunView: View {
     case .length: ("Cut off: output limit reached", "scissors", .orange)
     }
   }
+}
+
+/// Whole seconds, e.g. `1h 2m 3s`.
+func format(seconds: Double) -> String {
+  Duration.seconds(Int(seconds)).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))
 }
 
 func format(durationMs: Int) -> String {

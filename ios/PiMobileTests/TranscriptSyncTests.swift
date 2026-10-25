@@ -311,6 +311,34 @@ private func lines(_ transcript: Transcript) -> [String] {
     #expect(calls.map(\.status) == [.failed, .succeeded])
   }
 
+  @Test func aRunningToolCallShowsItsCommandItsTimeoutAndTheTailOfItsOutput() throws {
+    var transcript = Transcript()
+    let startedAt = Date(timeIntervalSince1970: 1000)
+    let start = #"{"phase":"start","toolCallId":"t1","toolName":"bash","args":{"command":"cd x\necho hi","timeout":30}}"#
+    let update = #"{"phase":"update","toolCallId":"t1","toolName":"bash","output":"1\n2\n3\n4\n5\n6\n7\n"}"#
+    for case .event(let seq, let e) in try BridgeProtocol.records(in: event(1, "toolCall", start)) {
+      transcript.apply(e, seq: seq, now: startedAt)
+    }
+    try transcript.apply(frame: event(2, "toolCall", update))
+
+    let call = try #require(transcript.toolCalls.first)
+    #expect(call.startedAt == startedAt)
+    #expect(call.command == "cd x\necho hi")
+    #expect(call.timeoutSeconds == 30)
+    #expect(call.outputTail == "3\n4\n5\n6\n7")
+  }
+
+  @Test func aToolCallWithoutCommandOrTimeoutHasNeither() throws {
+    var transcript = Transcript()
+    try transcript.apply(
+      frame: event(1, "toolCall", #"{"phase":"start","toolCallId":"t1","toolName":"read","args":{"path":"a"}}"#))
+
+    let call = try #require(transcript.toolCalls.first)
+    #expect(call.command == nil)
+    #expect(call.timeoutSeconds == nil)
+    #expect(call.outputTail == "")
+  }
+
   @Test func theCurrentRunIsTimedFromItsStartAndSettlingEndsIt() async throws {
     let (client, bridge, _) = try await connect { _, _, peer in
       peer.send(ack)
