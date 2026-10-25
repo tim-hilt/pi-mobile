@@ -11,6 +11,8 @@ import { PiShare, type PiEvent, type PiHost } from "./piShare.js";
 class FakeHost implements PiHost {
   readonly sent: Array<[string, string | undefined]> = [];
   aborts = 0;
+  /** Whether pi has no run going; a run makes the share queue prompts. */
+  idle = true;
   pendingInPi = false;
   /** Messages on the current branch, as pi stores them. */
   messages: unknown[] = [];
@@ -35,6 +37,7 @@ class FakeHost implements PiHost {
   abort = () => {
     this.aborts++;
   };
+  isIdle = () => this.idle;
   hasPendingMessages = () => this.pendingInPi;
   branch = () =>
     [
@@ -114,9 +117,28 @@ test("a run streams deltas between its start and settle; the start counts once",
 test("a prompt from the app is sent to pi as typed input", () => {
   const { host, share } = setup();
 
-  share.call({ method: "prompt", text: "/skill:tdd go" });
+  share.prompt("/skill:tdd go");
 
   expect(host.sent).toEqual([["/skill:tdd go", undefined]]);
+});
+
+test("on an idle session a prompt starts a run, whatever its mode", () => {
+  const { host, share, events } = setup();
+
+  share.prompt("go", "followUp");
+
+  expect(host.sent).toEqual([["go", undefined]]);
+  expect(events()).toEqual([]);
+});
+
+test("during a run, a prompt without a mode is refused rather than guessed", () => {
+  const { host, share } = setup();
+  host.idle = false;
+
+  expect(() => share.prompt("ambiguous")).toThrow(
+    expect.objectContaining({ code: "runActive" })
+  );
+  expect(host.sent).toEqual([]);
 });
 
 test("a completed assistant message carries its full text and thinking", () => {
@@ -272,9 +294,10 @@ test("the next run starts clean after one ended in error", () => {
 test("steer and follow-up go to pi's queues and show as queued until pi takes them in", () => {
   const { host, share, events, emit } = setup();
   emit({ type: "agent_start" });
+  host.idle = false;
 
-  share.call({ method: "steer", text: "left" });
-  share.call({ method: "followUp", text: "after" });
+  share.prompt("left", "steer");
+  share.prompt("after", "followUp");
   emit(userEnd("left"));
 
   expect(host.sent).toEqual([
@@ -290,9 +313,10 @@ test("steer and follow-up go to pi's queues and show as queued until pi takes th
 });
 
 test("what pi did not take in by the time the run settles is no longer queued", () => {
-  const { share, events, emit } = setup();
+  const { host, share, events, emit } = setup();
   emit({ type: "agent_start" });
-  share.call({ method: "followUp", text: "after" });
+  host.idle = false;
+  share.prompt("after", "followUp");
 
   emit({ type: "agent_settled", aborted: true });
 
@@ -306,7 +330,7 @@ test("what pi did not take in by the time the run settles is no longer queued", 
 test("abort is forwarded to pi", () => {
   const { host, share } = setup();
 
-  share.call({ method: "abort" });
+  share.abort();
 
   expect(host.aborts).toBe(1);
 });
@@ -338,7 +362,7 @@ test("the history holds user and assistant text and thinking, and each tool call
     },
   ];
 
-  expect(share.call({ method: "history" })).toEqual({
+  expect(share.history()).toEqual({
     messages: [
       { role: "user", text: "hi" },
       { role: "assistant", text: "Hello", thinking: "hm" },
@@ -374,7 +398,7 @@ test("skills are pi's skill commands, by name and description", () => {
     { name: "review", description: "A prompt.", source: "prompt" },
   ];
 
-  expect(share.call({ method: "skills" })).toEqual([
+  expect(share.skills()).toEqual([
     { name: "tdd", description: "Test-driven development." },
   ]);
 });
@@ -397,7 +421,7 @@ test("stats count the whole session, across branches", () => {
     },
   ];
 
-  expect(share.call({ method: "stats" })).toEqual({
+  expect(share.stats()).toEqual({
     userMessages: 1,
     assistantMessages: 2,
     toolCalls: 1,
@@ -512,7 +536,7 @@ test("models are those pi offers to switch to, by provider, id and name", () => 
     { provider: "anthropic", id: "opus", name: "Claude Opus", extra: 1 },
   ];
 
-  expect(share.call({ method: "models" })).toEqual([
+  expect(share.models()).toEqual([
     { provider: "anthropic", id: "opus", name: "Claude Opus" },
   ]);
 });
@@ -520,17 +544,9 @@ test("models are those pi offers to switch to, by provider, id and name", () => 
 test("setting the model asks pi to switch, and fails when pi can't", async () => {
   const { host, share } = setup();
 
-  await share.call({
-    method: "setModel",
-    provider: "anthropic",
-    modelId: "opus",
-  });
+  await share.setModel("anthropic", "opus");
   host.refuseModel = new Error("no API key for anthropic");
-  const refused = share.call({
-    method: "setModel",
-    provider: "anthropic",
-    modelId: "sonnet",
-  });
+  const refused = share.setModel("anthropic", "sonnet");
 
   await expect(refused).rejects.toThrow("no API key for anthropic");
   expect(host.selected).toEqual([["anthropic", "opus"]]);

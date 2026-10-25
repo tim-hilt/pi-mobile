@@ -9,19 +9,6 @@ struct BridgeConfig: Codable, Equatable, Sendable {
   let token: String
 }
 
-extension BridgeConfig {
-  /// Reads the bridge's pairing QR code (`pimobile://connect?url=…&token=…`); nil for anything else.
-  init?(pairingURL: URL) {
-    guard pairingURL.scheme == "pimobile", pairingURL.host == "connect",
-      let items = URLComponents(url: pairingURL, resolvingAgainstBaseURL: false)?.queryItems,
-      let address = items.first(where: { $0.name == "url" })?.value,
-      let url = URL(string: address), ["ws", "wss"].contains(url.scheme), url.host != nil,
-      let token = items.first(where: { $0.name == "token" })?.value, !token.isEmpty
-    else { return nil }
-    self.init(url: url, token: token)
-  }
-}
-
 enum ConnectionState: Equatable, Sendable {
   /// Not connected: never connected, disconnected, unreachable, or dropped. Retries (if any) run
   /// silently in the background, without passing through `connecting`.
@@ -43,23 +30,27 @@ enum PromptMode: String, Sendable {
   case followUp
 }
 
-/// Owns the connection to the bridge and publishes its `state` and the synced `transcript`.
+/// Owns the connection to the bridge and publishes what it syncs: `state`, the live `sessions`,
+/// and the `transcript` of the session on show.
 ///
-/// Both are pushed by the client as the socket progresses (observe them with SwiftUI or
+/// All of it is pushed as the socket progresses (observe it with SwiftUI or
 /// `withObservationTracking`); callers never poll. `connect` replaces any existing connection.
-/// Once connected, a dropped or unreachable socket is retried with exponential backoff, rejoining
-/// the session on show from the transcript's replay cursor; only a refusal by the bridge
-/// (`failed`) or `disconnect` ends the attempts.
+/// Once connected, a dropped or unreachable socket is retried with exponential backoff; only a
+/// refusal by the bridge (`failed`) or `disconnect` ends the attempts. The session on show
+/// (`show`) is joined whenever connected, resuming from the transcript's replay cursor.
 ///
-/// Commands (`send`, `abort`, `skills`, `models`, `setModel`, `searchFiles`, `sessions`, `join`,
-/// `stats`, `show`) are async: they return once the bridge has answered
-/// and throw its `ProtocolError`, or `CommandError` if the connection is not usable. Their effects
-/// show up in `transcript` through the events the bridge streams, never through the return value.
+/// Commands are async: they return once the bridge has answered and throw its `ProtocolError`,
+/// or `CommandError` if the connection is not usable. Their effects show up in `transcript`
+/// through the events the bridge streams, never through the return value.
 @MainActor @Observable
 final class BridgeClient {
   private(set) var state = ConnectionState.offline
-  /// Everything synced from the bridge so far; kept across reconnects to the same bridge.
+  /// The live pi sessions, most recently active first; nil until the bridge has listed them.
+  private(set) var sessions: [LiveSession]?
+  /// Everything synced from the session on show; kept across reconnects to the same bridge.
   private(set) var transcript = Transcript()
+  /// Why the session on show could not be joined; nil while it is joined or being joined.
+  private(set) var showFailure: String?
 
   /// Why a command could not be answered.
   enum CommandError: LocalizedError, Equatable {
@@ -72,10 +63,14 @@ final class BridgeClient {
   @ObservationIgnored private var connection: Task<Void, Never>?
   /// The socket of the live connection; nil between connections.
   @ObservationIgnored private var socket: URLSessionWebSocketTask?
-  /// Commands sent on `socket` still waiting for their `result`, by command id.
-  @ObservationIgnored private var pending: [Int: CheckedContinuation<Record.CommandResult, Error>] = [:]
-  @ObservationIgnored private var nextCommandId = 2
+  /// Commands sent on `socket` still waiting for their `result` record, by command id.
+  @ObservationIgnored private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
+  @ObservationIgnored private var nextCommandId = 1
   @ObservationIgnored private var config: BridgeConfig?
+  /// The session the user has open, joined whenever connected.
+  @ObservationIgnored private var shownId: String?
+  /// The session this connection joined or is joining; nil on a fresh connection.
+  @ObservationIgnored private var joinedId: String?
   @ObservationIgnored private let reconnectDelay: Duration
 
   private static let maxReconnectDelay = Duration.seconds(30)
@@ -88,8 +83,11 @@ final class BridgeClient {
   func connect(to config: BridgeConfig) {
     connection?.cancel()
     failPending()
-    // A transcript and its cursor belong to one bridge; never replay another's.
-    if config != self.config { transcript = Transcript() }
+    // What was synced belongs to one bridge; never replay another's cursor.
+    if config != self.config {
+      transcript = Transcript()
+      sessions = nil
+    }
     self.config = config
     state = .connecting
     connection = Task { await superviseConnection(to: config) }
@@ -102,85 +100,88 @@ final class BridgeClient {
     state = .offline
   }
 
+  /// Puts the live session `id` on show: once connected, its snapshot replaces `transcript`, then
+  /// it streams. Showing the session already on show again resumes from the replay cursor. If the
+  /// bridge no longer knows the session, the transcript is marked ended; other failures to join
+  /// land in `showFailure`.
+  func show(sessionId id: String) {
+    shownId = id
+    joinShownSession()
+  }
+
   /// Sends `text` to the agent: it starts a run when idle, else is delivered as `mode` says.
   func send(_ text: String, mode: PromptMode = .steer) async throws {
-    _ = try await command("prompt", ["text": .string(text), "mode": .string(mode.rawValue)])
+    try await command("prompt", ["text": .string(text), "mode": .string(mode.rawValue)])
   }
 
   /// Stops the active run; its transcript then shows it as aborted.
   func abort() async throws {
-    _ = try await command("abort")
+    try await command("abort")
   }
 
   /// The session's skills, invoked by sending `/skill:<name>`.
   func skills() async throws -> [Skill] {
-    try await command("listSkills").skills ?? []
+    try BridgeProtocol.result([Skill].self, field: .skills, from: await command("listSkills"))
   }
 
   /// The models the session can switch to; the active one is `transcript.status.model`.
   func models() async throws -> [ModelInfo] {
-    try await command("listModels").models ?? []
+    try BridgeProtocol.result([ModelInfo].self, field: .models, from: await command("listModels"))
   }
 
   /// Switches the session to `model`; `transcript.status` follows once pi has.
   func setModel(_ model: ModelInfo) async throws {
-    _ = try await command("setModel", ["provider": .string(model.provider), "id": .string(model.id)])
+    try await command("setModel", ["provider": .string(model.provider), "id": .string(model.id)])
   }
 
   /// Workspace files matching `query` (prefix or fuzzy), best first, as paths relative to the
   /// session's working directory.
   func searchFiles(_ query: String) async throws -> [String] {
-    try await command("searchFiles", ["query": .string(query)]).files ?? []
+    try BridgeProtocol.result(
+      [String].self, field: .files, from: await command("searchFiles", ["query": .string(query)]))
   }
 
-  /// The live pi sessions, most recently active first.
-  func sessions() async throws -> SessionList {
-    let result = try await command("getSessions")
-    return SessionList(sessions: result.sessions ?? [], joinedId: result.joinedId)
+  /// Counts and run timing of the current session.
+  func stats() async throws -> SessionStats {
+    try BridgeProtocol.result(SessionStats.self, from: await command("getStats"))
   }
 
-  /// Shows the live session `id`: its snapshot replaces `transcript`, then it streams. Rejoining
-  /// the session on show resumes from the replay cursor. If the bridge no longer knows the session
-  /// on show (`unknownSession`), the transcript is marked ended.
-  func join(sessionId id: String) async throws {
+  /// Joins the session on show, unless this connection already has (and it has not ended since).
+  private func joinShownSession() {
+    guard state == .connected, let id = shownId, id != joinedId || transcript.hasEnded else { return }
+    joinedId = id
+    showFailure = nil
+    Task {
+      do {
+        try await join(sessionId: id)
+      } catch {
+        if joinedId == id { joinedId = nil }
+        showFailure = error.localizedDescription
+      }
+    }
+  }
+
+  private func join(sessionId id: String) async throws {
     var params: [String: JSONValue] = ["id": .string(id)]
     if id == transcript.sessionId, let epoch = transcript.epoch {
       params["lastSeq"] = .number(Double(transcript.lastSeq))
       params["epoch"] = .string(epoch)
     }
     do {
-      _ = try await command("joinSession", params)
+      // Its catch-up may be applied before this resumes; the epoch only matters on the next join.
+      let joined = try await command("joinSession", params)
+      transcript.epoch = try BridgeProtocol.result(String.self, field: .epoch, from: joined)
     } catch let error as ProtocolError where error.code == "unknownSession" && id == transcript.sessionId {
       transcript.markEnded()
       throw error
     }
   }
 
-  /// Makes `sessionId` the session on show, once connected (e.g. after opening a notification's
-  /// link). Throws `CommandError.notConnected` if the bridge refuses us or stays out of reach for
-  /// 10 s, or the bridge's refusal to join (`unknownSession`).
-  func show(sessionId: String) async throws {
-    let deadline = ContinuousClock.now + .seconds(10)
-    while state != .connected {
-      if case .failed = state { throw CommandError.notConnected }
-      guard ContinuousClock.now < deadline else { throw CommandError.notConnected }
-      try await Task.sleep(for: .milliseconds(50))
-    }
-    if transcript.sessionId != sessionId || transcript.hasEnded { try await join(sessionId: sessionId) }
-  }
-
-  /// Counts and run timing of the current session.
-  func stats() async throws -> SessionStats {
-    guard let stats = try await command("getStats").stats else {
-      throw ProtocolError(code: "malformedResult", message: "getStats returned no stats")
-    }
-    return stats
-  }
-
-  private func command(_ name: String, _ params: [String: JSONValue] = [:]) async throws -> Record.CommandResult {
+  /// Sends a command; returns its `result` record, for `BridgeProtocol.result` to decode.
+  @discardableResult
+  private func command(_ name: String, _ params: [String: JSONValue] = [:]) async throws -> Data {
     guard state == .connected, let socket else { throw CommandError.notConnected }
-    let id = nextCommandId
-    nextCommandId += 1
+    let id = takeCommandId()
     let frame = BridgeProtocol.commandFrame(id: id, name: name, params: params)
     return try await withCheckedThrowingContinuation { continuation in
       pending[id] = continuation
@@ -192,19 +193,14 @@ final class BridgeClient {
     }
   }
 
+  private func takeCommandId() -> Int {
+    defer { nextCommandId += 1 }
+    return nextCommandId
+  }
+
   private func failPending() {
     for continuation in pending.values { continuation.resume(throwing: CommandError.notConnected) }
     pending.removeAll()
-  }
-
-  /// Completes the command a `result` record answers.
-  private func resolve(_ record: Record) {
-    guard record.type == "result", let id = record.id, let continuation = pending.removeValue(forKey: id) else { return }
-    if let error = record.error {
-      continuation.resume(throwing: error)
-    } else {
-      continuation.resume(returning: record.result ?? Record.CommandResult())
-    }
   }
 
   /// Keeps a socket open until the bridge refuses us or the task is cancelled.
@@ -234,7 +230,8 @@ final class BridgeClient {
     let socket = URLSession.shared.webSocketTask(with: request)
     socket.resume()
     self.socket = socket
-    nextCommandId = 2
+    nextCommandId = 1
+    joinedId = nil
     defer {
       socket.cancel(with: .goingAway, reason: nil)
       // A superseding connection may already own `socket` and `pending`.
@@ -244,7 +241,7 @@ final class BridgeClient {
       }
     }
 
-    let helloId = 1
+    let helloId = takeCommandId()
     var wasConnected = false
     do {
       try await socket.send(.string(BridgeProtocol.helloFrame(id: helloId)))
@@ -252,16 +249,19 @@ final class BridgeClient {
         guard case .string(let frame) = try await socket.receive() else { continue }
         for record in try BridgeProtocol.records(in: frame) {
           guard !Task.isCancelled else { return .dropped(wasConnected: wasConnected) }
-          transcript.apply(record)
-          resolve(record)
-          if let next = Self.transition(on: record, helloId: helloId) {
-            state = next
-            if case .failed = next { return .refused }
+          switch record {
+          case .event(let seq, let event): transcript.apply(event, seq: seq)
+          case .sessions(let sessions): self.sessions = sessions
+          case .result(helloId, let outcome):
+            state = Self.handshakeState(outcome)
+            if case .failed = state { return .refused }
             wasConnected = true
-            // Back to the session on show, catching up from where we left it.
-            if let id = transcript.sessionId, !transcript.hasEnded {
-              Task { try? await join(sessionId: id) }
-            }
+            joinShownSession()  // back to where we left it, catching up from the cursor
+          case .result(let id, let outcome):
+            pending.removeValue(forKey: id)?.resume(with: outcome.mapError { $0 })
+          case .error(let error):
+            state = .failed(error)
+            return .refused
           }
         }
       }
@@ -276,23 +276,20 @@ final class BridgeClient {
     }
   }
 
-  /// The state a record moves the connection to, or nil if it does not affect it.
-  private static func transition(on record: Record, helloId: Int) -> ConnectionState? {
-    switch record.type {
-    case "error":
-      return record.error.map { .failed($0) }
-    case "result" where record.id == helloId:
-      if let error = record.error { return .failed(error) }
-      guard record.result?.protocolVersion == BridgeProtocol.version else {
+  /// `connected` if the bridge acknowledged our `hello` with our version, else why not.
+  private static func handshakeState(_ outcome: Result<Data, ProtocolError>) -> ConnectionState {
+    switch outcome {
+    case .failure(let error): return .failed(error)
+    case .success(let json):
+      let version = try? BridgeProtocol.result(Int.self, field: .protocolVersion, from: json)
+      guard version == BridgeProtocol.version else {
         return .failed(
           ProtocolError(
             code: "versionMismatch",
-            message: "bridge acknowledged protocol version \(record.result?.protocolVersion.map(String.init) ?? "none"), app speaks \(BridgeProtocol.version)"
+            message: "bridge acknowledged protocol version \(version.map(String.init) ?? "none"), app speaks \(BridgeProtocol.version)"
           ))
       }
       return .connected
-    default:
-      return nil
     }
   }
 }

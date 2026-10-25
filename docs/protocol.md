@@ -2,7 +2,7 @@
 
 Source of truth for the contract between `bridge/` and `ios/`. Both sides test against it.
 
-**Version: 2**
+**Version: 3**
 
 The bridge serves every pi session running on the Mac (see [Share Link](#share-link)). A connection lists them and _joins_ one at a time; events and session commands concern the joined session.
 
@@ -18,10 +18,10 @@ Every record has a `type`.
 | ------------ | --------- | ----------------------------------------- |
 | app → bridge | `command` | `id` (integer), `name`, `params` (object) |
 | bridge → app | `result`  | `id` (echoed), `result` **or** `error`    |
-| bridge → app | `event`   | `seq` (integer), `name`, `data` (object)  |
+| bridge → app | `event`   | `seq` (integer)¹, `name`, `data` (object) |
 | bridge → app | `error`   | `error` (connection-level, no `id`)       |
 
-`error` is `{ "code": string, "message": string }`.
+`error` is `{ "code": string, "message": string }`. ¹ Absent on `sessions`, the only event not about the joined session.
 
 ## Protocol violations
 
@@ -56,13 +56,13 @@ Bridge config (`~/.pi/agent/bridge.json`): `ntfyTopic` (enables it), `ntfyUrl` (
 
 After a successful `hello`, the bridge sends a WebSocket ping every ~30 s (Cloudflare drops idle sockets at ~100 s).
 
+## Session list
+
+Right after the `hello` result, and again whenever a session starts or ends, starts or settles a run, is renamed or replaced by pi, the bridge sends `sessions` `{ sessions }`: every live session, most recently active first, as `{ id, name?, cwd, preview, running, lastStopReason?, activeAt }` (`name` user-given; `preview` the first user message, `""` if none; `lastStopReason` the `stopReason` of the latest `runSettled`, absent until a run settled since pi began the session; `activeAt` ISO 8601 of the latest event). A change to `activeAt` alone is not announced.
+
 ## Commands
 
-`hello`, `getSessions`, `joinSession`, `prompt`, `abort`, `getStats`, `listSkills`, `searchFiles`, `listModels`, `setModel`. All but the first three concern the joined session; sent before joining → `error.code = "notJoined"`.
-
-### `getSessions`
-
-Params `{}`. Result `{ sessions, joinedId? }` — every live session, most recently active first, as `{ id, name?, cwd, preview, running, lastStopReason?, activeAt }` (`name` user-given; `preview` the first user message, `""` if none; `lastStopReason` the `stopReason` of the latest `runSettled`, absent until a run settled since pi began the session; `activeAt` ISO 8601 of the latest event). `joinedId` is the session this connection is joined to.
+`hello`, `joinSession`, `prompt`, `abort`, `getStats`, `listSkills`, `searchFiles`, `listModels`, `setModel`. All but the first two concern the joined session; sent before joining → `error.code = "notJoined"`.
 
 ### `joinSession`
 
@@ -72,7 +72,7 @@ Params `{ id: string, lastSeq?: integer, epoch?: string }`. Result `{ epoch }`, 
 
 Params: `{ text: string, mode?: "steer" | "followUp" }`. Result `{}` once pi has the text.
 
-- Idle session: starts a run; `mode` is ignored.
+- Idle session (as pi sees it): starts a run; `mode` is ignored.
 - Run active: `steer` delivers after the current assistant turn and its tool calls; `followUp` delivers after the run finishes its pending work. No `mode` → `error.code = "runActive"`.
 - Bad params → `error.code = "invalidParams"`. Pi failing → `error.code = "sessionError"` (connection stays usable).
 
@@ -135,4 +135,4 @@ One event per phase of a tool execution; all carry `toolCallId` and `toolName`. 
 
 ## Share Link
 
-How pi processes share their sessions with the bridge; internal to the Mac, not part of the app contract. The `bridge/src/shareExtension.ts` pi extension connects every interactive pi process to the unix socket `~/.pi/agent/bridge.sock` (`PI_BRIDGE_SOCKET`; mode `0600`, no auth) and exchanges NDJSON records (`bridge/src/link.ts`): pi sends `announce` (on connect and when it replaces its session), `info`, `event` and `reply`; the bridge sends `call`. Any time, even before `announce`, pi may send `pairing`; the bridge answers `{type:"pairing", url}` (the app's pairing URL, holding the token) or `{type:"pairing", error}` without `publicUrl`. If no bridge answers, the extension starts `bridge/dist/main.js` detached; it outlives that pi. The TCP port is the single-instance lock.
+How pi processes share their sessions with the bridge; internal to the Mac, not part of the app contract. The `bridge/src/shareExtension.ts` pi extension connects every interactive pi process to the unix socket `~/.pi/agent/bridge.sock` (`PI_BRIDGE_SOCKET`; mode `0600`, no auth) and exchanges NDJSON records (`bridge/src/link.ts`): pi sends `announce` (on connect and when it replaces its session), `info`, `event` and `reply`; the bridge sends `call` `{ id, method, args }`, invoking one of `ShareCalls` (`bridge/src/gateway.ts`), which pi answers with `reply` `{ id, result }` or `{ id, error, code? }` (`code` set when pi refused for a protocol reason, e.g. `runActive`). Any time, even before `announce`, pi may send `pairing`; the bridge answers `{type:"pairing", url}` (the app's pairing URL, holding the token) or `{type:"pairing", error}` without `publicUrl`. If no bridge answers, the extension starts `bridge/dist/main.js` detached; it outlives that pi. The TCP port is the single-instance lock.

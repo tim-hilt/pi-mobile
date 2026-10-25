@@ -3,7 +3,7 @@ import Testing
 
 @testable import PiMobile
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":2,"epoch":"e1"}}"# + "\n"
+private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3,"epoch":"e1"}}"# + "\n"
 
 private func event(_ seq: Int, _ name: String, _ data: String) -> String {
   #"{"type":"event","seq":\#(seq),"name":"\#(name)","data":\#(data)}"# + "\n"
@@ -23,10 +23,10 @@ private func waitUntil(
   #expect(condition(), "timed out waiting for \(description)", sourceLocation: sourceLocation)
 }
 
-/// What the user would read: one `role: text` line per message (streaming ones suffixed `…`).
+/// What the user would read: one `role: text` line per message (the streaming one suffixed `…`).
 private func lines(_ transcript: Transcript) -> [String] {
   transcript.messages.map {
-    "\($0.role == .user ? "user" : "assistant"): \($0.text)\($0.isStreaming ? "…" : "")"
+    "\($0.role == .user ? "user" : "assistant"): \($0.text)\(transcript.streaming?.id == $0.id ? "…" : "")"
   }
 }
 
@@ -134,7 +134,7 @@ private func lines(_ transcript: Transcript) -> [String] {
     defer { bridge.stop() }
     await waitUntil("connected") { client.state == .connected }
 
-    try await client.join(sessionId: "a")
+    client.show(sessionId: "a")
 
     await waitUntil("resumed events") { client.transcript.lastSeq == 5 }
     #expect(lines(client.transcript) == ["assistant: Hello…"])
@@ -169,10 +169,9 @@ private func lines(_ transcript: Transcript) -> [String] {
     defer { bridge.stop() }
     await waitUntil("connected") { client.state == .connected }
 
-    try await client.join(sessionId: "b")
+    client.show(sessionId: "b")
 
-    await waitUntil("snapshot") { client.transcript.sessionId == "b" }
-    #expect(client.transcript.epoch == "e2")
+    await waitUntil("snapshot and epoch") { client.transcript.epoch == "e2" }
     #expect(client.transcript.cwd == "/work/b")
     #expect(lines(client.transcript) == ["user: in b"])
     // A session not on show is joined from scratch: no cursor.
@@ -183,7 +182,7 @@ private func lines(_ transcript: Transcript) -> [String] {
     var transcript = Transcript()
     let frame = event(1, "runStarted", "{}") + delta(2, "text", "a") + delta(3, "text", "b") + delta(2, "text", "a")
       + delta(3, "text", "b") + delta(4, "text", "c")
-    for record in try BridgeProtocol.records(in: frame) { transcript.apply(record) }
+    try transcript.apply(frame: frame)
 
     #expect(lines(transcript) == ["assistant: abc…"])
     #expect(transcript.lastSeq == 4)
@@ -302,7 +301,7 @@ private func lines(_ transcript: Transcript) -> [String] {
           + #"{"role":"toolCall","toolCallId":"t1","toolName":"bash","args":{"command":"ls"},"output":"a","isError":true},"#
           + #"{"role":"toolCall","toolCallId":"t2","toolName":"read","args":{}}]}"#)
       + event(4, "toolCall", #"{"phase":"end","toolCallId":"t2","toolName":"read","output":"b","isError":false}"#)
-    for record in try BridgeProtocol.records(in: frame) { transcript.apply(record) }
+    try transcript.apply(frame: frame)
 
     #expect(entryKinds(transcript) == ["message", "tool", "tool"])
     let calls = transcript.toolCalls
@@ -365,5 +364,19 @@ private func entryKinds(_ transcript: Transcript) -> [String] {
     case .toolCall: "tool"
     case .run: "run"
     }
+  }
+}
+
+extension Transcript {
+  /// The messages in reading order, the one still streaming last.
+  var messages: [Message] {
+    entries.compactMap { if case .message(let m) = $0 { m } else { nil } } + (streaming.map { [$0] } ?? [])
+  }
+  var toolCalls: [ToolCall] { entries.compactMap { if case .toolCall(let c) = $0 { c } else { nil } } }
+  var runs: [Run] { entries.compactMap { if case .run(let r) = $0 { r } else { nil } } }
+
+  /// Applies the session events in `frame`, as the client does.
+  mutating func apply(frame: String) throws {
+    for case .event(let seq, let event) in try BridgeProtocol.records(in: frame) { apply(event, seq: seq) }
   }
 }

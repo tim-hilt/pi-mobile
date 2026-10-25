@@ -2,19 +2,17 @@ import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { createServer, type Socket } from "node:net";
 import { dirname } from "node:path";
 import type {
+  CallMethod,
   GatewayEvent,
   SessionGateway,
   SessionHistory,
   SharedSessionInfo,
+  ShareCalls,
 } from "./gateway.js";
 import { searchWorkspace } from "./fileSearch.js";
-import {
-  readRecords,
-  write,
-  type Call,
-  type CallResults,
-  type ShareRecord,
-} from "./link.js";
+import { readRecords, write, type ShareRecord } from "./link.js";
+import { CommandError } from "./protocol.js";
+import type { SessionHub } from "./session.js";
 
 /**
  * `SessionGateway` for a pi process on the other end of a Share Link. Calls go
@@ -33,20 +31,23 @@ export class LinkGateway implements SessionGateway {
     private current: SharedSessionInfo
   ) {}
 
-  prompt = (text: string) => this.call({ method: "prompt", text });
-  steer = (text: string) => this.call({ method: "steer", text });
-  followUp = (text: string) => this.call({ method: "followUp", text });
-  abort = () => this.call({ method: "abort" });
-  skills = () => this.call({ method: "skills" });
-  stats = () => this.call({ method: "stats" });
-  models = () => this.call({ method: "models" });
-  setModel = (provider: string, id: string) =>
-    this.call({ method: "setModel", provider, modelId: id });
+  call<M extends CallMethod>(
+    method: M,
+    ...args: Parameters<ShareCalls[M]>
+  ): Promise<Awaited<ReturnType<ShareCalls[M]>>> {
+    return new Promise((resolve, reject) =>
+      this.send(method, args, (result, error) =>
+        error
+          ? reject(error)
+          : resolve(result as Awaited<ReturnType<ShareCalls[M]>>)
+      )
+    );
+  }
 
   history(onHistory: (history: SessionHistory | undefined) => void): void {
     // Not via `call`: resolving a Promise would run `onHistory` only after
     // later records of the same chunk had been emitted.
-    this.send({ method: "history" }, (result, error) =>
+    this.send("history", [], (result, error) =>
       onHistory(error ? undefined : (result as SessionHistory))
     );
   }
@@ -73,6 +74,7 @@ export class LinkGateway implements SessionGateway {
         break;
       case "info":
         this.current = record.info;
+        this.emit({ name: "infoChanged" });
         break;
       case "event":
         this.emit(record.event);
@@ -80,9 +82,12 @@ export class LinkGateway implements SessionGateway {
       case "reply": {
         const onReply = this.pending.get(record.id);
         this.pending.delete(record.id);
+        if (record.error === undefined) return onReply?.(record.result);
         onReply?.(
-          record.result,
-          record.error === undefined ? undefined : new Error(record.error)
+          undefined,
+          record.code
+            ? new CommandError(record.code, record.error)
+            : new Error(record.error)
         );
       }
     }
@@ -96,23 +101,14 @@ export class LinkGateway implements SessionGateway {
     this.listeners.clear();
   }
 
-  private call<M extends Call["method"]>(
-    call: Call & { method: M }
-  ): Promise<CallResults[M]> {
-    return new Promise((resolve, reject) =>
-      this.send(call, (result, error) =>
-        error ? reject(error) : resolve(result as CallResults[M])
-      )
-    );
-  }
-
   private send(
-    call: Call,
+    method: keyof ShareCalls,
+    args: unknown[],
     onReply: (result: unknown, error?: Error) => void
   ): void {
     const id = this.nextId++;
     this.pending.set(id, onReply);
-    write(this.socket, { type: "call", id, ...call });
+    write(this.socket, { type: "call", id, method, args });
   }
 
   private emit(event: GatewayEvent): void {
@@ -120,22 +116,16 @@ export class LinkGateway implements SessionGateway {
   }
 }
 
-/** Where shared sessions come and go. */
-export interface ShareRegistry<Handle> {
-  add(gateway: SessionGateway): Handle;
-  remove(handle: Handle): void;
-}
-
 /**
- * Accepts Share Links on the unix socket `path`, registering each pi session
- * with `registry` on its first `announce` and removing it when the link drops.
+ * Accepts Share Links on the unix socket `path`, adding each pi session to
+ * `hub` on its first `announce` and removing it when the link drops.
  * Answers `pairing` with `pairingUrl()`, so pi can show the QR code; the token
  * in it never leaves the user's private socket. Replaces a leftover socket
  * file: the caller must already know no other bridge is running.
  */
-export async function listenForShares<Handle>(
+export async function listenForShares(
   path: string,
-  registry: ShareRegistry<Handle>,
+  hub: SessionHub,
   {
     pairingUrl = () => undefined,
   }: { pairingUrl?: () => string | undefined } = {}
@@ -146,7 +136,7 @@ export async function listenForShares<Handle>(
   const server = createServer((socket) => {
     sockets.add(socket);
     let gateway: LinkGateway | undefined;
-    let handle: Handle | undefined;
+    let session: ReturnType<SessionHub["add"]> | undefined;
     readRecords<ShareRecord>(socket, (record) => {
       if (record.type === "pairing") {
         const url = pairingUrl();
@@ -163,13 +153,13 @@ export async function listenForShares<Handle>(
       if (gateway) return gateway.receive(record);
       if (record.type !== "announce") return;
       gateway = new LinkGateway(socket, record.info);
-      handle = registry.add(gateway);
+      session = hub.add(gateway);
     });
     socket.on("error", () => {});
     socket.on("close", () => {
       sockets.delete(socket);
       gateway?.close();
-      if (handle !== undefined) registry.remove(handle);
+      if (session) hub.remove(session);
     });
   });
   await new Promise<void>((resolve, reject) => {

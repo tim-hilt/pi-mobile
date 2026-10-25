@@ -4,7 +4,14 @@ import SwiftUI
 /// follow-up, abort, and see what is still queued. Typing `/` offers the session's
 /// skills and `@` its files; Tab (hardware keyboard) takes the first suggestion, Esc dismisses.
 struct ComposerView: View {
+  /// Takes the commands; the transcript state below is passed in, so streaming leaves this alone.
   let client: BridgeClient
+  /// The session typed into; its skills are offered.
+  let sessionId: String
+  /// Whether the session can be driven: shown, connected and not ended.
+  let isLive: Bool
+  let isRunning: Bool
+  let queue: Transcript.Queue
 
   @State private var draft = ""
   @State private var failure: String?
@@ -14,10 +21,8 @@ struct ComposerView: View {
   /// A trigger the user waved away; suggestions stay hidden until the draft's trigger changes.
   @State private var dismissed: Suggestions.Trigger?
 
-  private var transcript: Transcript { client.transcript }
   private var canSend: Bool {
-    client.state == .connected && transcript.sessionId != nil && !transcript.hasEnded
-      && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    isLive && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   private var trigger: Suggestions.Trigger? {
@@ -35,7 +40,7 @@ struct ComposerView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       if !picks.isEmpty { SuggestionBar(picks: picks, accept: accept, dismiss: dismiss) }
-      if !transcript.queue.isEmpty { QueueView(queue: transcript.queue) }
+      if !queue.isEmpty { QueueView(queue: queue) }
       if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
       HStack(alignment: .bottom, spacing: 8) {
         TextField("Message", text: $draft, axis: .vertical)
@@ -51,7 +56,7 @@ struct ComposerView: View {
             dismiss()
             return .handled
           }
-        if transcript.isRunning {
+        if isRunning {
           Button("Abort", systemImage: "stop.circle.fill", role: .destructive) { run { try await client.abort() } }
             .labelStyle(.iconOnly)
             .font(.title)
@@ -63,8 +68,8 @@ struct ComposerView: View {
     .padding(.vertical, 8)
     .background(.bar)
     // Skills belong to the session: reload when joining another.
-    .task(id: client.state == .connected ? transcript.sessionId : nil) {
-      guard client.state == .connected, transcript.sessionId != nil else { return }
+    .task(id: isLive ? sessionId : nil) {
+      guard isLive else { return }
       skills = (try? await client.skills()) ?? []
     }
     .task(id: trigger) {
@@ -84,7 +89,7 @@ struct ComposerView: View {
 
   /// Idle: a plain send. During a run the tap steers, and a long press offers the follow-up.
   @ViewBuilder private var sendButton: some View {
-    if transcript.isRunning {
+    if isRunning {
       Menu {
         Button("Follow up after the run", systemImage: "clock") { send(.followUp) }
       } label: {

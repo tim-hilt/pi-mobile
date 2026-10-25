@@ -9,6 +9,16 @@ const run = promisify(execFile);
 const SKIPPED_DIRS = new Set([".git", "node_modules"]);
 
 /**
+ * How long a workspace listing serves further searches. The app searches as
+ * the user types; listing a large repository per keystroke would be wasteful,
+ * and a file a few seconds new rarely matters.
+ */
+export const LISTING_TTL_MS = 5_000;
+
+/** The latest listing, until it expires; one at most, so memory stays bounded. */
+let cached: { cwd: string; files: Promise<string[]> } | undefined;
+
+/**
  * Files under `cwd` matching `query`, best first, at most `limit`, as
  * `/`-separated paths relative to `cwd`. Matching is case-insensitive:
  * file-name prefix, then path prefix, then substring, then subsequence
@@ -21,7 +31,7 @@ export async function searchWorkspace(
 ): Promise<string[]> {
   const needle = query.toLowerCase();
   const matches: Array<{ path: string; tier: number }> = [];
-  for (const path of await listFiles(cwd)) {
+  for (const path of await cachedListing(cwd)) {
     const tier = matchTier(path.toLowerCase(), needle);
     if (tier !== undefined) matches.push({ path, tier });
   }
@@ -47,6 +57,18 @@ function matchTier(path: string, needle: string): number | undefined {
     if (from === 0) return undefined;
   }
   return 3;
+}
+
+function cachedListing(cwd: string): Promise<string[]> {
+  if (cached?.cwd === cwd) return cached.files;
+  const entry = { cwd, files: listFiles(cwd) };
+  const expire = () => {
+    if (cached === entry) cached = undefined;
+  };
+  cached = entry;
+  entry.files.catch(expire);
+  setTimeout(expire, LISTING_TTL_MS).unref();
+  return entry.files;
 }
 
 /** Every file in the workspace: git's view (tracked and untracked, minus ignored) if it is a repository. */

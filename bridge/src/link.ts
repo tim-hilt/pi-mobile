@@ -1,14 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Socket } from "node:net";
-import type {
-  GatewayEvent,
-  GatewayStats,
-  ModelInfo,
-  SessionHistory,
-  SharedSessionInfo,
-  SkillInfo,
-} from "./gateway.js";
+import { createInterface } from "node:readline";
+import type { GatewayEvent, SharedSessionInfo, ShareCalls } from "./gateway.js";
 
 /**
  * The Share Link: how a pi process shares its session with the bridge. One
@@ -28,33 +22,27 @@ export type ShareRecord =
   /** The session's name or preview changed. */
   | { type: "info"; info: SharedSessionInfo }
   | { type: "event"; event: GatewayEvent }
-  | { type: "reply"; id: number; result?: unknown; error?: string }
+  /** Answers the `call` with this `id`: its `result`, or `error` (with the refusal's `code`, if any). */
+  | {
+      type: "reply";
+      id: number;
+      result?: unknown;
+      error?: string;
+      code?: string;
+    }
   /** Asks for the app's pairing URL; allowed before `announce`. */
   | { type: "pairing" };
 
 /** Bridge → pi: answers `pairing`, with the URL or why there is none. */
 export type PairingRecord = { type: "pairing"; url?: string; error?: string };
 
-/** Bridge → pi: a request pi answers with one `reply` of the same `id`. */
-export type CallRecord = { type: "call"; id: number } & Call;
-
-export type Call =
-  | { method: "prompt" | "steer" | "followUp"; text: string }
-  | { method: "setModel"; provider: string; modelId: string }
-  | { method: "abort" | "history" | "skills" | "stats" | "models" };
-
-/** What each call resolves with. */
-export interface CallResults {
-  prompt: void;
-  steer: void;
-  followUp: void;
-  abort: void;
-  history: SessionHistory;
-  skills: SkillInfo[];
-  stats: GatewayStats;
-  models: ModelInfo[];
-  setModel: void;
-}
+/** Bridge → pi: invokes `ShareCalls[method](...args)`; pi answers with one `reply` of the same `id`. */
+export type CallRecord = {
+  type: "call";
+  id: number;
+  method: keyof ShareCalls;
+  args: unknown[];
+};
 
 /** Sends `record` as one line. */
 export const write = (
@@ -62,24 +50,22 @@ export const write = (
   record: ShareRecord | CallRecord | PairingRecord
 ) => socket.write(JSON.stringify(record) + "\n");
 
-/** Calls `onRecord` for every complete line on `socket`; malformed lines are skipped. */
+/**
+ * Calls `onRecord` for every line on `socket`, synchronously as each chunk
+ * arrives, so records keep their order; malformed lines are skipped.
+ */
 export function readRecords<T>(socket: Socket, onRecord: (record: T) => void) {
-  let buffered = "";
-  socket.setEncoding("utf8");
-  socket.on("data", (chunk: string) => {
-    buffered += chunk;
-    let newline: number;
-    while ((newline = buffered.indexOf("\n")) >= 0) {
-      const line = buffered.slice(0, newline);
-      buffered = buffered.slice(newline + 1);
-      if (!line.trim()) continue;
+  createInterface({ input: socket })
+    .on("line", (line) => {
+      if (!line.trim()) return;
       let record: T;
       try {
         record = JSON.parse(line) as T;
       } catch {
-        continue;
+        return;
       }
       onRecord(record);
-    }
-  });
+    })
+    // Re-emitted socket errors; the socket's owner handles those.
+    .on("error", () => {});
 }

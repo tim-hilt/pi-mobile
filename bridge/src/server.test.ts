@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import WebSocket from "ws";
 import { FakeGateway } from "./fakeGateway.js";
-import { PROTOCOL_VERSION } from "./protocol.js";
+import { CommandError, PROTOCOL_VERSION } from "./protocol.js";
 import { startBridge, type Bridge } from "./server.js";
 
 const TOKEN = "s3cret";
@@ -28,19 +28,31 @@ async function bridge(
   return b;
 }
 
-/** A real WebSocket client that queues incoming records and records the close. */
+/**
+ * A real WebSocket client that queues incoming records and records the close.
+ * `sessions` events, which may come any time, queue apart from the rest.
+ */
 async function connect(b: Bridge, token: string | null = TOKEN) {
   const headers = token === null ? {} : { Authorization: `Bearer ${token}` };
   const ws = new WebSocket(`ws://127.0.0.1:${b.port}`, { headers });
   cleanups.push(() => ws.terminate());
   const records: unknown[] = [];
+  const lists: unknown[] = [];
   const waiting: Array<() => void> = [];
   ws.on("message", (data) => {
     for (const line of data.toString().split("\n")) {
-      if (line) records.push(JSON.parse(line));
+      if (!line) continue;
+      const record = JSON.parse(line);
+      if (record.name === "sessions") lists.push(record.data.sessions);
+      else records.push(record);
     }
     waiting.splice(0).forEach((wake) => wake());
   });
+  const take = async (queue: unknown[]) => {
+    while (queue.length === 0)
+      await new Promise<void>((wake) => waiting.push(wake));
+    return queue.shift();
+  };
   const closed = new Promise<number>((resolve) =>
     ws.on("close", (code) => resolve(code))
   );
@@ -52,11 +64,9 @@ async function connect(b: Bridge, token: string | null = TOKEN) {
     ws,
     closed,
     send: (text: string) => ws.send(text),
-    async next(): Promise<unknown> {
-      while (records.length === 0)
-        await new Promise<void>((wake) => waiting.push(wake));
-      return records.shift();
-    },
+    next: () => take(records),
+    /** The next session list pushed. */
+    nextSessions: () => take(lists) as Promise<Array<Record<string, unknown>>>,
   };
 }
 
@@ -289,7 +299,7 @@ test("a prompt streams deltas, message end and run settled in order", async () =
       data: { stopReason: "success", durationMs: expect.any(Number) },
     },
   ]);
-  expect(gateway.prompts).toEqual(["hi"]);
+  expect(gateway.prompts).toEqual([{ text: "hi" }]);
 });
 
 test("a tool call goes on the wire as toolCall events keyed by phase", async () => {
@@ -365,53 +375,28 @@ test.each([
   }
 );
 
-test("during a run, a prompt routes as steer or follow-up per its mode", async () => {
+test("a prompt's mode is passed on to pi, which decides how to deliver it", async () => {
   const gateway = new FakeGateway();
   const c = await ready(await bridge(undefined, gateway));
-  c.send(command(2, "prompt", { text: "go" }));
-  await c.next();
-  gateway.emit({ name: "runStarted" });
-  await c.next();
 
-  c.send(command(3, "prompt", { text: "left", mode: "steer" }));
-  c.send(command(4, "prompt", { text: "later", mode: "followUp" }));
-  expect(await c.next()).toEqual({ type: "result", id: 3, result: {} });
-  expect(await c.next()).toEqual({ type: "result", id: 4, result: {} });
+  c.send(command(2, "prompt", { text: "left", mode: "steer" }));
 
-  expect(gateway.prompts).toEqual(["go"]);
-  expect(gateway.steers).toEqual(["left"]);
-  expect(gateway.followUps).toEqual(["later"]);
+  expect(await c.next()).toEqual({ type: "result", id: 2, result: {} });
+  expect(gateway.prompts).toEqual([{ text: "left", mode: "steer" }]);
 });
 
-test("during a run, a prompt without a mode is refused", async () => {
+test("pi refusing a command for a known reason surfaces that reason's code", async () => {
   const gateway = new FakeGateway();
   const c = await ready(await bridge(undefined, gateway));
-  gateway.emit({ name: "runStarted" });
-  await c.next();
+  gateway.failNextWith = new CommandError("runActive", "a run is active");
 
   c.send(command(2, "prompt", { text: "ambiguous" }));
 
-  expect(await c.next()).toMatchObject({
+  expect(await c.next()).toEqual({
     type: "result",
     id: 2,
-    error: { code: "runActive" },
+    error: { code: "runActive", message: "a run is active" },
   });
-  expect(gateway.prompts).toEqual([]);
-});
-
-test("once a run has settled, a prompt starts a new run even with a mode", async () => {
-  const gateway = new FakeGateway();
-  const c = await ready(await bridge(undefined, gateway));
-  gateway.emit({ name: "runStarted" });
-  gateway.emit({ name: "runSettled", stopReason: "success" });
-  await c.next();
-  await c.next();
-
-  c.send(command(2, "prompt", { text: "again", mode: "steer" }));
-  await c.next();
-
-  expect(gateway.prompts).toEqual(["again"]);
-  expect(gateway.steers).toEqual([]);
 });
 
 test("a gateway failure becomes an error result and the connection stays usable", async () => {
@@ -872,67 +857,80 @@ test("run stats restart when pi replaces the session", async () => {
   });
 });
 
-test("getSessions lists the live sessions, most recently active first, and which one is joined", async () => {
+test("after hello the session list is pushed, most recently active first", async () => {
   const b = await bridge(undefined, null);
   const older = new FakeGateway("s1", { name: "Refactor", cwd: "/a" });
   const newer = new FakeGateway("s2", { cwd: "/b" });
   b.hub.add(older);
-  b.hub.add(newer);
   await new Promise((resolve) => setTimeout(resolve, 5));
+  b.hub.add(newer);
   newer.emit({ name: "runStarted" });
   const c = await greeted(b);
 
-  c.send(command(2, "getSessions", {}));
-  expect(await c.next()).toEqual({
-    type: "result",
-    id: 2,
-    result: {
-      sessions: [
-        {
-          id: "s2",
-          cwd: "/b",
-          preview: "hello from s2",
-          running: true,
-          activeAt: expect.any(String),
-        },
-        {
-          id: "s1",
-          name: "Refactor",
-          cwd: "/a",
-          preview: "hello from s1",
-          running: false,
-          activeAt: expect.any(String),
-        },
-      ],
+  expect(await c.nextSessions()).toEqual([
+    {
+      id: "s2",
+      cwd: "/b",
+      preview: "hello from s2",
+      running: true,
+      activeAt: expect.any(String),
     },
-  });
-
-  c.send(join(3, "s1"));
-  await c.next();
-  await c.next();
-  c.send(command(4, "getSessions", {}));
-  expect(await c.next()).toMatchObject({ id: 4, result: { joinedId: "s1" } });
+    {
+      id: "s1",
+      name: "Refactor",
+      cwd: "/a",
+      preview: "hello from s1",
+      running: false,
+      activeAt: expect.any(String),
+    },
+  ]);
 });
 
-test("getSessions reports how each session's latest run ended, until pi replaces the session", async () => {
+test("the session list is pushed again when a session comes, goes, runs, settles or is renamed", async () => {
   const b = await bridge(undefined, null);
   const gateway = new FakeGateway("s1");
-  b.hub.add(gateway);
   const c = await greeted(b);
-  const lastStopReason = async (id: number) => {
-    c.send(command(id, "getSessions", {}));
-    const record = (await c.next()) as {
-      result: { sessions: { lastStopReason?: string }[] };
-    };
-    return record.result.sessions[0]?.lastStopReason;
-  };
+  expect(await c.nextSessions()).toEqual([]);
 
-  expect(await lastStopReason(2)).toBeUndefined();
+  b.hub.add(gateway);
+  expect(await c.nextSessions()).toMatchObject([{ id: "s1", running: false }]);
   gateway.emit({ name: "runStarted" });
+  expect(await c.nextSessions()).toMatchObject([{ running: true }]);
   gateway.emit({ name: "runSettled", stopReason: "error" });
-  expect(await lastStopReason(3)).toBe("error");
+  expect(await c.nextSessions()).toMatchObject([
+    { running: false, lastStopReason: "error" },
+  ]);
+  gateway.rename("Refactor");
+  expect(await c.nextSessions()).toMatchObject([{ name: "Refactor" }]);
   gateway.replace("s2");
-  expect(await lastStopReason(4)).toBeUndefined();
+  const [replaced] = await c.nextSessions();
+  expect(replaced).toMatchObject({ id: "s2" });
+  expect(replaced).not.toHaveProperty("lastStopReason");
+  b.hub.remove(b.hub.find("s2")!);
+  expect(await c.nextSessions()).toEqual([]);
+});
+
+test("a burst of changes is pushed as one list, and other events are not pushed at all", async () => {
+  const b = await bridge();
+  const gateway = new FakeGateway("s2");
+  const c = await greeted(b);
+  await c.nextSessions();
+  await new Promise((resolve) => setTimeout(resolve, 5)); // s2 is newer
+
+  b.hub.add(gateway);
+  gateway.emit({ name: "runStarted" });
+  gateway.emit({ name: "delta", kind: "text", text: "hi" });
+  gateway.emit({ name: "status", cost: 1 });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(await c.nextSessions()).toMatchObject([
+    { id: "s2", running: true },
+    { id: "s1" },
+  ]);
+  const more = await Promise.race([
+    c.nextSessions(),
+    new Promise((resolve) => setTimeout(() => resolve("none"), 20)),
+  ]);
+  expect(more).toBe("none");
 });
 
 test("joining a session answers with its epoch, then sends its snapshot", async () => {
@@ -1002,7 +1000,7 @@ test("joining another session moves the connection over to it", async () => {
   c.send(command(4, "prompt", { text: "hi" }));
   await c.next();
 
-  expect(other.prompts).toEqual(["hi"]);
+  expect(other.prompts).toEqual([{ text: "hi" }]);
 });
 
 test("each session has its own event sequence and epoch", async () => {
@@ -1026,8 +1024,6 @@ test("a session pi stops sharing tells its clients it ended and leaves them unjo
   expect(await c.next()).toEqual(wire(1, "sessionEnded", { sessionId: "s1" }));
   c.send(command(2, "abort", {}));
   expect(await c.next()).toMatchObject({ error: { code: "notJoined" } });
-  c.send(command(3, "getSessions", {}));
-  expect(await c.next()).toMatchObject({ result: { sessions: [] } });
 });
 
 test("when pi replaces its session, joined clients get the new one's snapshot and the replay cursor restarts", async () => {

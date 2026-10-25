@@ -7,6 +7,7 @@ import { afterEach, expect, test } from "vitest";
 import { LinkClient } from "./linkClient.js";
 import { listenForShares } from "./linkGateway.js";
 import { PiShare, type PiEvent, type PiHost } from "./piShare.js";
+import { CommandError } from "./protocol.js";
 import { SessionHub, type BridgeEvent } from "./session.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -33,6 +34,7 @@ function pi(id: string, cwd = "/work") {
   const host: PiHost = {
     send: (text) => void sent.push(text),
     abort: () => {},
+    isIdle: () => true,
     hasPendingMessages: () => false,
     branch: () =>
       [
@@ -90,7 +92,7 @@ test("a pi session shared over the link is listed, and joined clients drive it a
     data: { messages: [{ role: "user", text: "hi s1" }] },
   });
 
-  await session.prompt("go");
+  await session.gateway.call("prompt", "go");
   expect(sent).toEqual(["go"]);
   s.handle({ type: "agent_start" } as PiEvent);
   await eventually(() => events.length === 2);
@@ -209,15 +211,31 @@ test("a call pi answers asynchronously resolves once pi is done", async () => {
   const session = await eventually(() => hub.find("s1"));
   let done = false;
 
-  const switched = session.setModel("anthropic", "opus").then(() => {
-    done = true;
-  });
+  const switched = session.gateway
+    .call("setModel", "anthropic", "opus")
+    .then(() => {
+      done = true;
+    });
   await eventually(() => finish);
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(done).toBe(false);
   finish!();
 
   await switched;
+});
+
+test("pi refusing a call for a known reason keeps its code across the link", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const hub = await listening(path);
+  const { host } = pi("s1");
+  host.isIdle = () => false;
+  share(client(path), host);
+  const session = await eventually(() => hub.find("s1"));
+
+  const refusal = session.gateway.call("prompt", "ambiguous");
+
+  await expect(refusal).rejects.toBeInstanceOf(CommandError);
+  await expect(refusal).rejects.toMatchObject({ code: "runActive" });
 });
 
 test("pi gets the pairing URL from the bridge, before sharing any session", async () => {

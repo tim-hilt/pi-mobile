@@ -2,6 +2,6 @@ import Testing
 
 @testable import PiMobile
 
-@Test func appSpeaksProtocolVersion2() {
-  #expect(BridgeProtocol.version == 2)
+@Test func appSpeaksProtocolVersion3() {
+  #expect(BridgeProtocol.version == 3)
 }

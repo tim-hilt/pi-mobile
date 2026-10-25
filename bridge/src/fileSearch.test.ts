@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeAll, expect, test } from "vitest";
-import { searchWorkspace } from "./fileSearch.js";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
+import { LISTING_TTL_MS, searchWorkspace } from "./fileSearch.js";
 
 // Git hooks (pre-commit) export GIT_INDEX_FILE etc., which would point test repos at this one.
 beforeAll(() => {
@@ -93,4 +93,19 @@ test("in a git repository, ignored files are skipped but untracked ones found", 
     "new.ts",
     "tracked.ts",
   ]);
+});
+
+test("searches in quick succession share one listing, which then expires", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  try {
+    const cwd = workspace("old.ts");
+    await searchWorkspace(cwd, "", 10);
+    writeFileSync(join(cwd, "new.ts"), "");
+
+    expect(await searchWorkspace(cwd, "", 10)).toEqual(["old.ts"]);
+    vi.advanceTimersByTime(LISTING_TTL_MS);
+    expect(await searchWorkspace(cwd, "", 10)).toEqual(["new.ts", "old.ts"]);
+  } finally {
+    vi.useRealTimers();
+  }
 });

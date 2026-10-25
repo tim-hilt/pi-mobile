@@ -88,6 +88,7 @@ function host(pi: ExtensionAPI, ctx: ExtensionContext) {
         ...(deliverAs && { deliverAs }),
       }),
     abort: () => ctx.abort(),
+    isIdle: () => ctx.isIdle(),
     hasPendingMessages: () => ctx.hasPendingMessages(),
     branch: () => ctx.sessionManager.getBranch(),
     entries: () => ctx.sessionManager.getEntries(),

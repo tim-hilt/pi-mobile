@@ -1,26 +1,28 @@
 import type {
+  CallMethod,
   GatewayEvent,
   GatewayStats,
   ModelInfo,
+  PromptMode,
   QueuedMessages,
   SessionGateway,
   SessionHistory,
   SessionStatus,
+  ShareCalls,
   SharedSessionInfo,
   SkillInfo,
   TranscriptMessage,
 } from "./gateway.js";
 
-/** Scriptable `SessionGateway` double: tests drive events and observe how prompts were routed. */
+/** Scriptable `SessionGateway` double: tests drive events and observe what reached pi. */
 export class FakeGateway implements SessionGateway {
-  readonly prompts: string[] = [];
-  readonly steers: string[] = [];
-  readonly followUps: string[] = [];
+  /** Every prompt pi accepted, with its mode if it had one. */
+  readonly prompts: Array<{ text: string; mode?: PromptMode }> = [];
   /** What `history()` reports; tests set it to the history they want snapshotted. */
   messages: TranscriptMessage[] = [];
-  /** What `skills()` reports. */
+  /** What the `skills` call reports. */
   skillList: SkillInfo[] = [];
-  /** What `models()` reports. */
+  /** What the `models` call reports. */
   modelList: ModelInfo[] = [];
   /** `[provider, id]` of every `setModel` that succeeded. */
   readonly selectedModels: Array<[string, string]> = [];
@@ -28,7 +30,7 @@ export class FakeGateway implements SessionGateway {
   files: string[] = [];
   /** The `(query, limit)` of every `searchFiles` call. */
   readonly searches: Array<[string, number]> = [];
-  /** What `stats()` reports. */
+  /** What the `stats` call reports. */
   statistics: GatewayStats = {
     userMessages: 0,
     assistantMessages: 0,
@@ -43,35 +45,37 @@ export class FakeGateway implements SessionGateway {
   status: SessionStatus = { cost: 0 };
   /** What `history()` reports as queued. */
   pending: QueuedMessages = { steering: [], followUp: [] };
-  /** When set, the next call to `prompt`, `steer`, `followUp`, `abort`, `setModel` or `searchFiles` rejects with it. */
+  /** When set, the next `call` or `searchFiles` rejects with it. */
   failNextWith: Error | undefined;
 
   private listeners = new Set<(event: GatewayEvent) => void>();
+
+  /** Pi's side of the calls. */
+  private readonly pi: Pick<ShareCalls, CallMethod> = {
+    prompt: (text, mode) => void this.prompts.push({ text, mode }),
+    abort: () => void this.aborts++,
+    skills: () => this.skillList,
+    models: () => this.modelList,
+    setModel: async (provider, id) =>
+      void this.selectedModels.push([provider, id]),
+    stats: () => this.statistics,
+  };
 
   constructor(id = "s1", extra: Partial<SharedSessionInfo> = {}) {
     this.current = { id, cwd: "/work", preview: `hello from ${id}`, ...extra };
   }
 
-  prompt = (text: string) => this.accept(this.prompts, text);
-  steer = (text: string) => this.accept(this.steers, text);
-  followUp = (text: string) => this.accept(this.followUps, text);
-
-  abort = async () => {
+  async call<M extends CallMethod>(
+    method: M,
+    ...args: Parameters<ShareCalls[M]>
+  ): Promise<Awaited<ReturnType<ShareCalls[M]>>> {
     this.throwIfFailing();
-    this.aborts++;
-  };
+    const call = this.pi[method] as (...args: unknown[]) => unknown;
+    return (await call(...args)) as Awaited<ReturnType<ShareCalls[M]>>;
+  }
 
   history = (onHistory: (history: SessionHistory | undefined) => void) =>
     onHistory({ messages: this.messages, ...this.pending, ...this.status });
-
-  skills = async () => this.skillList;
-
-  models = async () => this.modelList;
-
-  setModel = async (provider: string, id: string) => {
-    this.throwIfFailing();
-    this.selectedModels.push([provider, id]);
-  };
 
   searchFiles = async (query: string, limit: number) => {
     this.throwIfFailing();
@@ -81,13 +85,17 @@ export class FakeGateway implements SessionGateway {
 
   info = () => this.current;
 
-  stats = async () => this.statistics;
-
   /** Like pi replacing its session (`/new`, `/resume`): becomes `id` with `messages`. */
   replace(id: string, messages: TranscriptMessage[] = []): void {
     this.current = { ...this.current, id, preview: "" };
     this.messages = messages;
     this.emit({ name: "sessionChanged" });
+  }
+
+  /** Like pi renaming the session. */
+  rename(name: string): void {
+    this.current = { ...this.current, name };
+    this.emit({ name: "infoChanged" });
   }
 
   subscribe(listener: (event: GatewayEvent) => void): () => void {
@@ -98,11 +106,6 @@ export class FakeGateway implements SessionGateway {
   /** Delivers a session event to every subscriber, as pi would. */
   emit(event: GatewayEvent): void {
     for (const listener of this.listeners) listener(event);
-  }
-
-  private async accept(into: string[], text: string): Promise<void> {
-    this.throwIfFailing();
-    into.push(text);
   }
 
   private throwIfFailing(): void {

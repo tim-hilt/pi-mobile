@@ -7,6 +7,7 @@ import {
   type ShareRecord,
 } from "./link.js";
 import type { PiShare } from "./piShare.js";
+import { CommandError } from "./protocol.js";
 
 /** Reconnect delays: start fast (a bridge we just spawned is coming up), back off to this. */
 const FIRST_RETRY_MS = 200;
@@ -125,7 +126,7 @@ export class LinkClient {
   }
 
   /** Replies at once, unless the share answers with a Promise: then when it settles. */
-  private answer(socket: Socket, { id, type: _, ...call }: CallRecord): void {
+  private answer(socket: Socket, { id, method, args }: CallRecord): void {
     const share = this.share;
     if (!share) {
       write(socket, { type: "reply", id, error: "pi is switching sessions" });
@@ -136,10 +137,12 @@ export class LinkClient {
         type: "reply",
         id,
         error: e instanceof Error ? e.message : String(e),
+        ...(e instanceof CommandError && { code: e.code }),
       });
     let result: unknown;
     try {
-      result = share.call(call);
+      const call = share[method] as (...args: unknown[]) => unknown;
+      result = call.apply(share, args);
     } catch (e) {
       return void failed(e);
     }

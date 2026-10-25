@@ -7,8 +7,6 @@ struct SessionsView: View {
   /// Called with the config from a scanned pairing QR code.
   let onPair: (BridgeConfig) -> Void
 
-  @State private var sessions: [LiveSession]?
-  @State private var failure: String?
   @State private var showingScanner = false
 
   var body: some View {
@@ -22,13 +20,6 @@ struct SessionsView: View {
         }
       }
       .sheet(isPresented: $showingScanner) { PairingScanner(onScan: onPair) }
-      // The list has no push channel: poll while it is on screen, so the icons stay current.
-      .task(id: client.state == .connected) {
-        while client.state == .connected && !Task.isCancelled {
-          await load()
-          try? await Task.sleep(for: .seconds(2))
-        }
-      }
   }
 
   @ViewBuilder private var content: some View {
@@ -41,22 +32,18 @@ struct SessionsView: View {
         scanButton
       }
       .padding(.bottom, raise)
-    } else if client.state == .connected, let sessions, sessions.isEmpty {
-      // Standalone like the offline state; polling picks up new sessions.
+    } else if client.state == .connected, let sessions = client.sessions, sessions.isEmpty {
+      // Standalone like the offline state; the bridge pushes new sessions as they start.
       ContentUnavailableView {
         Label("No pi sessions", systemImage: "terminal")
       } description: {
-        Text(failure ?? "Start pi on your Mac to see it here.")
+        Text("Start pi on your Mac to see it here.")
       }
       .padding(.bottom, raise)
-    } else if client.state == .connected, let sessions {
-      List {
-        if let failure { Text(failure).font(.footnote).foregroundStyle(.red) }
-        ForEach(sessions) { session in
-          NavigationLink(value: session.id) { SessionRow(session: session) }
-        }
+    } else if client.state == .connected, let sessions = client.sessions {
+      List(sessions) { session in
+        NavigationLink(value: session.id) { SessionRow(session: session) }
       }
-      .refreshable { await load() }
     } else if client.state == .offline {
       // Reconnects run silently in the background; the list returns once one succeeds.
       ContentUnavailableView {
@@ -83,15 +70,6 @@ struct SessionsView: View {
     Button("Scan QR Code to Log In", systemImage: "qrcode.viewfinder") { showingScanner = true }
       .buttonStyle(.borderedProminent)
   }
-
-  private func load() async {
-    do {
-      sessions = try await client.sessions().sessions
-      failure = nil
-    } catch {
-      failure = error.localizedDescription
-    }
-  }
 }
 
 /// Laid out like a Mail row: status, project and last activity on top, how the session began below.
@@ -105,9 +83,12 @@ private struct SessionRow: View {
         HStack(alignment: .firstTextBaseline) {
           Text(URL(fileURLWithPath: session.cwd).lastPathComponent).font(.headline).lineLimit(1)
           Spacer()
-          Text(session.activeAt, format: .relative(presentation: .named, unitsStyle: .abbreviated))
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+          // The list only changes with the sessions; the relative time ages on its own.
+          TimelineView(.everyMinute) { _ in
+            Text(session.activeAt, format: .relative(presentation: .named, unitsStyle: .abbreviated))
+          }
+          .font(.subheadline)
+          .foregroundStyle(.secondary)
         }
         Text(session.title).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
       }

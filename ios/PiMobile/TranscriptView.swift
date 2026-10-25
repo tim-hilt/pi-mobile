@@ -6,7 +6,6 @@ struct TranscriptView: View {
   let client: BridgeClient
   let sessionId: String
 
-  @State private var failure: String?
   @State private var showingModels = false
   @State private var showingStats = false
 
@@ -17,7 +16,11 @@ struct TranscriptView: View {
   var body: some View {
     VStack(spacing: 0) {
       conversation
-      ComposerView(client: client).disabled(!isShown || client.state != .connected)
+      ComposerView(
+        client: client, sessionId: sessionId, isLive: isLive, isRunning: client.transcript.isRunning,
+        queue: client.transcript.queue
+      )
+      .disabled(!isShown || client.state != .connected)
       if isShown {
         StatusBar(cwd: client.transcript.cwd, status: client.transcript.status) { showingModels = true }
           .disabled(!isLive)
@@ -30,16 +33,8 @@ struct TranscriptView: View {
     }
     .sheet(isPresented: $showingModels) { ModelsView(client: client) }
     .sheet(isPresented: $showingStats) { StatsView(client: client) }
-    // Retried on every reconnect, in case the connection dropped before the session was shown.
-    .task(id: "\(sessionId) \(client.state == .connected)") {
-      guard client.state != .offline else { return }
-      do {
-        try await client.show(sessionId: sessionId)
-        failure = nil
-      } catch {
-        failure = error.localizedDescription
-      }
-    }
+    // The client joins it once connected, and again after every reconnect.
+    .task(id: sessionId) { client.show(sessionId: sessionId) }
   }
 
   private var lostConnection: some View {
@@ -56,14 +51,16 @@ struct TranscriptView: View {
         Group {
           if client.state == .offline {
             lostConnection
-          } else if let failure {
+          } else if let failure = client.showFailure {
             ContentUnavailableView("Could not open the session", systemImage: "exclamationmark.triangle", description: Text(failure))
           } else {
             ProgressView()
           }
         }
         .containerRelativeFrame(.vertical)
-      } else if transcript.entries.isEmpty && !transcript.isRunning && !transcript.hasEnded {
+      } else if transcript.entries.isEmpty && transcript.streaming == nil && !transcript.isRunning
+        && !transcript.hasEnded
+      {
         ContentUnavailableView("No messages yet", systemImage: "text.bubble").containerRelativeFrame(.vertical)
       } else {
         LazyVStack(alignment: .leading, spacing: 12) {
@@ -74,6 +71,7 @@ struct TranscriptView: View {
             case .run(let run): RunView(run: run)
             }
           }
+          if let message = transcript.streaming { MessageView(message: message, isStreaming: true) }
           if let startedAt = transcript.runStartedAt { RunningView(startedAt: startedAt) }
           if transcript.hasEnded {
             Label("Session ended in pi", systemImage: "power").font(.footnote).foregroundStyle(.secondary)
@@ -128,6 +126,8 @@ private struct StatsView: View {
 
 private struct MessageView: View {
   let message: Transcript.Message
+  /// Still being generated: `message` holds the deltas so far.
+  var isStreaming = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
@@ -144,7 +144,7 @@ private struct MessageView: View {
         case .assistant: MarkdownView(markdown: Markdown(parsing: message.text))
         }
       }
-      if message.isStreaming { ProgressView() }
+      if isStreaming { ProgressView() }
     }
     .padding(message.role == .user ? 10 : 0)
     .background(message.role == .user ? Color.accentColor.opacity(0.15) : .clear, in: .rect(cornerRadius: 12))

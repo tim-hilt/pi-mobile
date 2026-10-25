@@ -2,11 +2,9 @@ import { randomUUID } from "node:crypto";
 import type {
   GatewayEvent,
   GatewayStats,
-  ModelInfo,
   SessionGateway,
   SessionHistory,
   SharedSessionInfo,
-  SkillInfo,
   StopReason,
 } from "./gateway.js";
 import type { RunNotifier } from "./ntfy.js";
@@ -16,16 +14,6 @@ export interface BridgeEvent {
   seq: number;
   name: string;
   data: Record<string, unknown>;
-}
-
-/** A command the bridge refuses; surfaces to the app as a `result` with this `error`. */
-export class CommandError extends Error {
-  constructor(
-    readonly code: string,
-    message: string
-  ) {
-    super(message);
-  }
 }
 
 /** `GatewayStats` plus the run timing only the bridge observes. */
@@ -47,12 +35,20 @@ export interface LiveSession extends SharedSessionInfo {
 
 type Listener = (event: BridgeEvent) => void;
 
+/** What a `Session` gets from its hub. */
+interface SessionOptions {
+  /** Events kept for replay on rejoin; older cursors get a snapshot. */
+  replayLimit: number;
+  /** Told about every settled run, whether or not anyone has joined. */
+  notifier?: RunNotifier;
+  /** Called whenever `describe()` changes other than in `activeAt`. */
+  onChange: () => void;
+}
+
 /**
  * One shared pi session as the protocol sees it: turns the gateway's events
- * into sequenced `BridgeEvent`s (adding run timing), remembers recent ones so
- * a rejoining client can catch up, and routes prompts according to whether a
- * run is active. Every settled run is also announced to `notifier`, whether
- * or not anyone has joined.
+ * into sequenced `BridgeEvent`s (adding run timing) and remembers recent ones
+ * so a rejoining client can catch up. Calls to pi go to `gateway` directly.
  */
 export class Session {
   /**
@@ -77,9 +73,8 @@ export class Session {
   private detach: () => void;
 
   constructor(
-    private gateway: SessionGateway,
-    private replayLimit = 1000,
-    private notifier?: RunNotifier
+    readonly gateway: SessionGateway,
+    private options: SessionOptions
   ) {
     this.detach = gateway.subscribe((event) => this.publish(event));
   }
@@ -124,48 +119,13 @@ export class Session {
     return () => this.listeners.delete(listener);
   }
 
-  /**
-   * Sends `text` to the agent. On an idle session it starts a run and `mode`
-   * is irrelevant. During a run, `mode` picks steering or follow-up delivery;
-   * omitting it is refused rather than guessed.
-   */
-  async prompt(text: string, mode?: "steer" | "followUp"): Promise<void> {
-    if (this.runStartedAt === undefined) return this.gateway.prompt(text);
-    if (mode === "steer") return this.gateway.steer(text);
-    if (mode === "followUp") return this.gateway.followUp(text);
-    throw new CommandError(
-      "runActive",
-      'a run is active; set mode to "steer" or "followUp"'
-    );
-  }
-
-  abort(): Promise<void> {
-    return this.gateway.abort();
-  }
-
   /** The session's counts, with the runs this bridge has timed for it. */
   async stats(): Promise<SessionStats> {
     return {
-      ...(await this.gateway.stats()),
+      ...(await this.gateway.call("stats")),
       runs: this.runs,
       runDurationMs: this.runDurationMs,
     };
-  }
-
-  skills(): Promise<SkillInfo[]> {
-    return this.gateway.skills();
-  }
-
-  models(): Promise<ModelInfo[]> {
-    return this.gateway.models();
-  }
-
-  setModel(provider: string, id: string): Promise<void> {
-    return this.gateway.setModel(provider, id);
-  }
-
-  searchFiles(query: string, limit: number): Promise<string[]> {
-    return this.gateway.searchFiles(query, limit);
   }
 
   /** Pi stopped sharing: joined clients get `sessionEnded`, then nothing more. */
@@ -240,17 +200,20 @@ export class Session {
     this.runDurationMs = 0;
     this.log = [];
     this.seq++;
+    this.options.onChange();
     this.sendSnapshot([...this.listeners.keys()]);
   }
 
   private publish(event: GatewayEvent): void {
     this.activeAt = new Date();
     if (event.name === "sessionChanged") return this.restart();
+    if (event.name === "infoChanged") return this.options.onChange();
     const { name, ...data } = event;
     if (event.name === "runStarted") {
       this.runStartedAt = performance.now();
       this.streaming = undefined;
       this.lastText = undefined;
+      this.options.onChange();
     } else if (event.name === "delta") {
       this.streaming ??= { text: "", thinking: "" };
       this.streaming[event.kind] += event.text;
@@ -268,7 +231,8 @@ export class Session {
       this.runDurationMs += durationMs;
       Object.assign(data, { durationMs });
       const { id, cwd, name: sessionName } = this.gateway.info();
-      this.notifier?.runSettled({
+      this.options.onChange();
+      this.options.notifier?.runSettled({
         sessionId: id,
         cwd,
         sessionName,
@@ -280,28 +244,40 @@ export class Session {
     }
     const wire = { seq: ++this.seq, name, data };
     this.log.push(wire);
-    if (this.log.length > this.replayLimit) this.log.shift();
+    if (this.log.length > this.options.replayLimit) this.log.shift();
     for (const [listener, ready] of this.listeners) if (ready) listener(wire);
   }
 }
 
+/** The session list as `SessionHub.watch` reports it. */
+type Watcher = (sessions: LiveSession[]) => void;
+
 /** Every session pi currently shares with the bridge. */
 export class SessionHub {
   private sessions = new Set<Session>();
+  private watchers = new Set<Watcher>();
+  private broadcastPending = false;
 
   constructor(
-    private replayLimit?: number,
+    private replayLimit = 1000,
     private notifier?: RunNotifier
   ) {}
 
   add(gateway: SessionGateway): Session {
-    const session = new Session(gateway, this.replayLimit, this.notifier);
+    const session = new Session(gateway, {
+      replayLimit: this.replayLimit,
+      notifier: this.notifier,
+      onChange: () => this.changed(),
+    });
     this.sessions.add(session);
+    this.changed();
     return session;
   }
 
   remove(session: Session): void {
-    if (this.sessions.delete(session)) session.end();
+    if (!this.sessions.delete(session)) return;
+    session.end();
+    this.changed();
   }
 
   /** Most recently active first. */
@@ -311,11 +287,39 @@ export class SessionHub {
       .sort((a, b) => b.activeAt.localeCompare(a.activeAt));
   }
 
+  /**
+   * Calls `watcher` with `list()` now, and again whenever a session comes,
+   * goes, or changes how it is listed (`activeAt` alone is no news). Returns
+   * the unsubscribe function.
+   */
+  watch(watcher: Watcher): () => void {
+    this.watchers.add(watcher);
+    watcher(this.list());
+    return () => this.watchers.delete(watcher);
+  }
+
   find(id: string): Session | undefined {
     for (const session of this.sessions) if (session.id === id) return session;
   }
 
   close(): void {
     for (const session of this.sessions) this.remove(session);
+    this.watchers.clear();
+  }
+
+  /**
+   * Broadcasts the list once the current burst of changes is over (pi
+   * announces a session and its active run in one go): one update, not one
+   * per change.
+   */
+  private changed(): void {
+    if (this.broadcastPending) return;
+    this.broadcastPending = true;
+    queueMicrotask(() => {
+      this.broadcastPending = false;
+      if (this.watchers.size === 0) return;
+      const sessions = this.list();
+      for (const watcher of this.watchers) watcher(sessions);
+    });
   }
 }

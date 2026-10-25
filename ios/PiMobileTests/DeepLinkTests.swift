@@ -30,47 +30,39 @@ import Testing
 
   // MARK: Showing the linked session
 
-  @Test func showingTheCurrentSessionSendsNothing() async throws {
+  @Test func showingTheSessionOnShowAgainSendsNothing() async throws {
     let (client, bridge, received) = try await connected(sessionId: "s7")
     defer { bridge.stop() }
 
-    try await client.show(sessionId: "s7")
+    client.show(sessionId: "s7")
+    for _ in 0..<500 where received.value?.isEmpty != false { try await Task.sleep(for: .milliseconds(10)) }
+    client.show(sessionId: "s7")
+    try await Task.sleep(for: .milliseconds(50))
 
-    #expect(received.value == [])
+    #expect(received.value?.count == 1)
   }
 
   @Test func showingAnotherSessionJoinsIt() async throws {
     let (client, bridge, received) = try await connected(sessionId: "s1")
     defer { bridge.stop() }
 
-    try await client.show(sessionId: "s7")
+    client.show(sessionId: "s7")
 
+    for _ in 0..<500 where received.value?.isEmpty != false { try await Task.sleep(for: .milliseconds(10)) }
     #expect(received.value?.first?.contains(#""name":"joinSession""#) == true)
     #expect(received.value?.first?.contains(#""id":"s7""#) == true)
   }
 
   /// A link usually arrives as the app comes to the foreground, before it has reconnected.
-  @Test func showingASessionWaitsForTheConnection() async throws {
+  @Test func aSessionShownWhileOfflineIsJoinedOnceConnected() async throws {
     let (client, bridge, received) = try await connected(sessionId: "s1", connect: false)
     defer { bridge.stop() }
 
-    let showing = Task { try await client.show(sessionId: "s7") }
-    try await Task.sleep(for: .milliseconds(50))
+    client.show(sessionId: "s7")
     client.connect(to: BridgeConfig(url: bridge.url, token: "t"))
-    try await showing.value
 
+    for _ in 0..<500 where received.value?.isEmpty != false { try await Task.sleep(for: .milliseconds(10)) }
     #expect(received.value?.first?.contains(#""name":"joinSession""#) == true)
-  }
-
-  @Test func showingASessionGivesUpWhenTheBridgeRefusesUs() async throws {
-    let bridge = try await FakeBridge(token: "t") { _, _ in }
-    defer { bridge.stop() }
-    let client = BridgeClient()
-    client.connect(to: BridgeConfig(url: bridge.url, token: "wrong"))
-
-    await #expect(throws: BridgeClient.CommandError.notConnected) {
-      try await client.show(sessionId: "s7")
-    }
   }
 
   /// A client on a bridge whose current session is `sessionId`; answers every command with `{}`.
@@ -83,12 +75,12 @@ import Testing
     let bridge = try await FakeBridge(token: "t") { frame, peer in
       if frame.contains(#""name":"hello""#) {
         peer.send(
-          #"{"type":"result","id":1,"result":{"protocolVersion":2}}"# + "\n"
+          #"{"type":"result","id":1,"result":{"protocolVersion":3}}"# + "\n"
             + #"{"type":"event","seq":1,"name":"transcript","data":{"sessionId":"\#(sessionId)","running":false,"messages":[]}}"#
             + "\n")
       } else {
         received.value = (received.value ?? []) + [frame]
-        peer.send(#"{"type":"result","id":2,"result":{}}"# + "\n")
+        peer.send(#"{"type":"result","id":2,"result":{"epoch":"e"}}"# + "\n")
       }
     }
     let client = BridgeClient()

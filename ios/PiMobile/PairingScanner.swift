@@ -12,7 +12,7 @@ struct PairingScanner: View {
       Group {
         if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
           QRScanner { code in
-            guard let url = URL(string: code), let config = BridgeConfig(pairingURL: url) else { return }
+            guard let url = URL(string: code), case .pair(let config)? = DeepLink(url: url) else { return }
             onScan(config)
             dismiss()
           }

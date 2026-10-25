@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import {
+  CommandError,
   MalformedRecordError,
   PROTOCOL_VERSION,
   encode,
@@ -12,7 +13,7 @@ import {
   type ProtocolError,
 } from "./protocol.js";
 import { NtfyNotifier, type NtfyConfig } from "./ntfy.js";
-import { CommandError, SessionHub, type Session } from "./session.js";
+import { SessionHub, type Session } from "./session.js";
 
 export interface BridgeOptions {
   /** Bearer token every request and WebSocket upgrade must present. */
@@ -95,21 +96,32 @@ export async function startBridge(options: BridgeOptions): Promise<Bridge> {
   };
 }
 
+/** A command's implementation: its result (`undefined` meaning `{}`), or a thrown refusal. */
+type Handler = (params: Record<string, unknown>) => unknown;
+
+/** Refuses a command whose params don't fit. */
+function invalidParams(message: string): never {
+  throw new CommandError("invalidParams", message);
+}
+
 /**
  * Drives one authenticated connection: handshake first, then commands. The
  * connection is joined to at most one session, which its events and
- * session commands concern.
+ * session commands concern; it is told the session list as it changes.
  */
 function serve(ws: WebSocket, pingIntervalMs: number, hub: SessionHub): void {
   let pinger: NodeJS.Timeout | undefined;
+  let unwatch: (() => void) | undefined;
   let handshaken = false;
   let joined: { session: Session; leave: () => void } | undefined;
+  /** Runs after the current command's result is sent: a join's catch-up must follow its result. */
+  let afterReply: (() => void) | undefined;
   const leave = () => {
     joined?.leave();
     joined = undefined;
   };
   /** The joined session, for commands that need one. */
-  const joinedSession = (): Session => {
+  const session = (): Session => {
     if (!joined) throw new CommandError("notJoined", "join a session first");
     return joined.session;
   };
@@ -120,151 +132,88 @@ function serve(ws: WebSocket, pingIntervalMs: number, hub: SessionHub): void {
     ws.close(CLOSE_PROTOCOL_VIOLATION);
   };
 
-  /** Returns false if the connection was rejected. */
-  const handle = async (command: Command): Promise<boolean> => {
-    if (!handshaken) return handshake(command);
-    const { id, name, params } = command;
-    const reply = (outcome: { result: unknown } | { error: ProtocolError }) =>
-      send({ type: "result", id, ...outcome });
-    /** Replies with `action`'s result, or with its failure; the connection stays usable. */
-    const respond = async (action: () => Promise<unknown>) => {
-      try {
-        reply({ result: await action() });
-      } catch (e) {
-        reply({
-          error:
-            e instanceof CommandError
-              ? { code: e.code, message: e.message }
-              : { code: "sessionError", message: errorMessage(e) },
-        });
-      }
-    };
-    switch (name) {
-      case "prompt": {
-        const { text, mode } = params;
-        if (
-          typeof text !== "string" ||
-          (mode !== undefined && mode !== "steer" && mode !== "followUp")
-        ) {
-          reply({
-            error: {
-              code: "invalidParams",
-              message:
-                'prompt requires string text and mode "steer" | "followUp"',
-            },
-          });
-          break;
-        }
-        await respond(async () => {
-          await joinedSession().prompt(text, mode);
-          return {};
-        });
-        break;
-      }
-      case "abort":
-        await respond(async () => {
-          await joinedSession().abort();
-          return {};
-        });
-        break;
-      case "getSessions":
-        await respond(async () => ({
-          sessions: hub.list(),
-          ...(joined && { joinedId: joined.session.id }),
-        }));
-        break;
-      case "joinSession": {
-        const { id: sessionId, lastSeq, epoch } = params;
-        if (typeof sessionId !== "string") {
-          reply({
-            error: {
-              code: "invalidParams",
-              message: "joinSession requires string id",
-            },
-          });
-          break;
-        }
-        const session = hub.find(sessionId);
-        if (!session) {
-          reply({
-            error: {
-              code: "unknownSession",
-              message: `no live session with id "${sessionId}"`,
-            },
-          });
-          break;
-        }
-        leave();
-        reply({ result: { epoch: session.epoch } });
-        // A missing or invalid cursor means "nothing seen": a snapshot is always safe.
-        const cursor = Number.isInteger(lastSeq) ? (lastSeq as number) : 0;
-        const unsubscribe = session.subscribe(cursor, epoch, (event) => {
+  const commands: Record<string, Handler> = {
+    joinSession: ({ id, lastSeq, epoch }) => {
+      if (typeof id !== "string")
+        invalidParams("joinSession requires string id");
+      const target = hub.find(id);
+      if (!target)
+        throw new CommandError(
+          "unknownSession",
+          `no live session with id "${id}"`
+        );
+      leave();
+      // A missing or invalid cursor means "nothing seen": a snapshot is always safe.
+      const cursor = Number.isInteger(lastSeq) ? (lastSeq as number) : 0;
+      afterReply = () => {
+        const unsubscribe = target.subscribe(cursor, epoch, (event) => {
           send({ type: "event", ...event });
           if (event.name === "sessionEnded") joined = undefined;
         });
-        joined = { session, leave: unsubscribe };
-        break;
-      }
-      case "getStats":
-        await respond(() => joinedSession().stats());
-        break;
-      case "listSkills":
-        await respond(async () => ({ skills: await joinedSession().skills() }));
-        break;
-      case "listModels":
-        await respond(async () => ({ models: await joinedSession().models() }));
-        break;
-      case "setModel": {
-        const { provider, id: modelId } = params;
-        if (typeof provider !== "string" || typeof modelId !== "string") {
-          reply({
-            error: {
-              code: "invalidParams",
-              message: "setModel requires string provider and id",
-            },
-          });
-          break;
-        }
-        await respond(async () => {
-          await joinedSession().setModel(provider, modelId);
-          return {};
-        });
-        break;
-      }
-      case "searchFiles": {
-        const { query, limit = DEFAULT_FILE_LIMIT } = params;
-        if (
-          typeof query !== "string" ||
-          typeof limit !== "number" ||
-          !Number.isInteger(limit) ||
-          limit < 1
-        ) {
-          reply({
-            error: {
-              code: "invalidParams",
-              message:
-                "searchFiles requires string query and positive integer limit",
-            },
-          });
-          break;
-        }
-        await respond(async () => ({
-          files: await joinedSession().searchFiles(
-            query,
-            Math.min(limit, MAX_FILE_LIMIT)
-          ),
-        }));
-        break;
-      }
-      default:
-        reply({
-          error: {
-            code: "unknownCommand",
-            message: `unknown command "${name}"`,
-          },
-        });
+        joined = { session: target, leave: unsubscribe };
+      };
+      return { epoch: target.epoch };
+    },
+    prompt: ({ text, mode }) => {
+      if (
+        typeof text !== "string" ||
+        (mode !== undefined && mode !== "steer" && mode !== "followUp")
+      )
+        invalidParams(
+          'prompt requires string text and mode "steer" | "followUp"'
+        );
+      return session().gateway.call("prompt", text, mode);
+    },
+    abort: () => session().gateway.call("abort"),
+    getStats: () => session().stats(),
+    listSkills: async () => ({
+      skills: await session().gateway.call("skills"),
+    }),
+    listModels: async () => ({
+      models: await session().gateway.call("models"),
+    }),
+    setModel: ({ provider, id }) => {
+      if (typeof provider !== "string" || typeof id !== "string")
+        invalidParams("setModel requires string provider and id");
+      return session().gateway.call("setModel", provider, id);
+    },
+    searchFiles: async ({ query, limit = DEFAULT_FILE_LIMIT }) => {
+      if (
+        typeof query !== "string" ||
+        typeof limit !== "number" ||
+        !Number.isInteger(limit) ||
+        limit < 1
+      )
+        invalidParams(
+          "searchFiles requires string query and positive integer limit"
+        );
+      const files = await session().gateway.searchFiles(
+        query,
+        Math.min(limit, MAX_FILE_LIMIT)
+      );
+      return { files };
+    },
+  };
+
+  /** Answers one command; any failure becomes its error result and the connection stays usable. */
+  const handle = async ({ id, name, params }: Command): Promise<void> => {
+    let outcome: { result: unknown } | { error: ProtocolError };
+    try {
+      const run = Object.hasOwn(commands, name) ? commands[name] : undefined;
+      if (!run)
+        throw new CommandError("unknownCommand", `unknown command "${name}"`);
+      outcome = { result: (await run(params)) ?? {} };
+    } catch (e) {
+      outcome = {
+        error:
+          e instanceof CommandError
+            ? { code: e.code, message: e.message }
+            : { code: "sessionError", message: errorMessage(e) },
+      };
     }
-    return true;
+    send({ type: "result", id, ...outcome });
+    afterReply?.();
+    afterReply = undefined;
   };
 
   /** Returns false if the connection was rejected. */
@@ -307,6 +256,9 @@ function serve(ws: WebSocket, pingIntervalMs: number, hub: SessionHub): void {
       result: { protocolVersion: PROTOCOL_VERSION },
     });
     pinger = setInterval(() => ws.ping(), pingIntervalMs);
+    unwatch = hub.watch((sessions) =>
+      send({ type: "event", name: "sessions", data: { sessions } })
+    );
     return true;
   };
 
@@ -315,9 +267,9 @@ function serve(ws: WebSocket, pingIntervalMs: number, hub: SessionHub): void {
   ws.on("message", (data: RawData) => {
     queue = queue
       .then(async () => {
-        let commands: Command[];
+        let received: Command[];
         try {
-          commands = parseCommands(data.toString());
+          received = parseCommands(data.toString());
         } catch (e) {
           if (!(e instanceof MalformedRecordError)) throw e;
           reject({
@@ -326,12 +278,16 @@ function serve(ws: WebSocket, pingIntervalMs: number, hub: SessionHub): void {
           });
           return;
         }
-        for (const command of commands) if (!(await handle(command))) return;
+        for (const command of received) {
+          if (handshaken) await handle(command);
+          else if (!handshake(command)) return;
+        }
       })
       .catch(() => ws.close(CLOSE_INTERNAL_ERROR));
   });
   ws.on("close", () => {
     clearInterval(pinger);
+    unwatch?.();
     leave();
   });
 }

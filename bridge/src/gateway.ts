@@ -1,47 +1,70 @@
+/** How a prompt sent during a run reaches the agent. */
+export type PromptMode = "steer" | "followUp";
+
+/**
+ * What the bridge can ask of a shared pi session: the single list of calls,
+ * implemented by `PiShare` in pi and invoked across the Share Link through
+ * `SessionGateway.call`. A method answers synchronously unless pi decides
+ * later (it then returns a Promise); throwing refuses the call, with a
+ * `CommandError`'s code if it has one.
+ */
+export interface ShareCalls {
+  /**
+   * Sends `text` to the agent: on an idle session it starts a run and `mode`
+   * is irrelevant; during a run `mode` picks steering or follow-up delivery,
+   * and omitting it is refused (`runActive`) rather than guessed.
+   */
+  prompt(text: string, mode?: PromptMode): void;
+  /** Stops the active run, if any; the run then settles as `aborted`. */
+  abort(): void;
+  /**
+   * The session's completed messages and tool calls, oldest first, its queue
+   * and status: the authoritative state behind a snapshot. Excludes a message
+   * still being generated.
+   */
+  history(): SessionHistory;
+  /** The skills the session can invoke as `/skill:<name>`. */
+  skills(): SkillInfo[];
+  /** The models the session can switch to, as pi's `/model` offers them. */
+  models(): ModelInfo[];
+  /**
+   * Makes `provider`'s model `id` the session's model; the change then shows
+   * as a `status` event. Rejects if pi can't (unknown model, no credentials).
+   */
+  setModel(provider: string, id: string): Promise<void>;
+  /** Message, tool and token counts of the whole session. */
+  stats(): GatewayStats;
+}
+
+/** The `ShareCalls` the bridge makes through `SessionGateway.call`; `history` has its own path. */
+export type CallMethod = Exclude<keyof ShareCalls, "history">;
+
 /**
  * The bridge's only view of one shared pi session: a narrow facade the
  * protocol layer depends on alone, so it can be tested against a fake and the
  * real pi link (`LinkGateway`) swapped in without touching it.
  */
 export interface SessionGateway {
+  /** Makes `method` on pi's side; resolves once pi has answered, rejects if pi refused. */
+  call<M extends CallMethod>(
+    method: M,
+    ...args: Parameters<ShareCalls[M]>
+  ): Promise<Awaited<ReturnType<ShareCalls[M]>>>;
   /**
-   * Starts a run for `text` on an idle session. Resolves once pi has the text,
-   * not when the run ends (that arrives as `runSettled`); rejects if refused.
-   */
-  prompt(text: string): Promise<void>;
-  /** Queues `text` to enter the active run after the current assistant turn and its tool calls. */
-  steer(text: string): Promise<void>;
-  /** Queues `text` to be delivered once the active run has finished its pending work. */
-  followUp(text: string): Promise<void>;
-  /** Stops the active run, if any; the run then settles as `aborted`. */
-  abort(): Promise<void>;
-  /**
-   * Fetches the session's completed messages and tool calls, oldest first, and
-   * its queue: the authoritative state behind a snapshot. Excludes a message
-   * still being generated. `onHistory` runs in line with the event stream (not
-   * a later microtask, unlike a Promise): the history reflects every event
-   * emitted before the call and none after. It gets `undefined` when pi can't
-   * answer, which only happens as the session ends or is replaced.
+   * Fetches `ShareCalls.history`. `onHistory` runs in line with the event
+   * stream (not a later microtask, unlike a Promise): the history reflects
+   * every event emitted before the call and none after. It gets `undefined`
+   * when pi can't answer, which only happens as the session ends or is
+   * replaced.
    */
   history(onHistory: (history: SessionHistory | undefined) => void): void;
-  /** The skills the session can invoke as `/skill:<name>`. */
-  skills(): Promise<SkillInfo[]>;
-  /** The models the session can switch to, as pi's `/model` offers them. */
-  models(): Promise<ModelInfo[]>;
-  /**
-   * Makes `provider`'s model `id` the session's model; the change then shows
-   * as a `status` event. Rejects if pi can't (unknown model, no credentials).
-   */
-  setModel(provider: string, id: string): Promise<void>;
   /**
    * Workspace files matching `query` (prefix or fuzzy, best first), at most
    * `limit`, as paths relative to the session's working directory.
    */
   searchFiles(query: string, limit: number): Promise<string[]>;
-  /** Identity of the session pi currently runs; replaced on `sessionChanged`. */
+  /** Identity of the session pi currently runs; replaced on `sessionChanged`, updated on `infoChanged`. */
   info(): SharedSessionInfo;
-  /** Message, tool and token counts of the session. */
-  stats(): Promise<GatewayStats>;
   /** Registers `listener` for session events; returns the unsubscribe function. */
   subscribe(listener: (event: GatewayEvent) => void): () => void;
 }
@@ -128,6 +151,8 @@ export type GatewayEvent =
   | { name: "runStarted" }
   /** Pi replaced the session (new, resume, fork): `info()` is the new one, nothing of the old one is current. */
   | { name: "sessionChanged" }
+  /** The session's name or preview changed: `info()` has the new one. Not sent to the app. */
+  | { name: "infoChanged" }
   /** A user message entered the conversation: the prompt itself, or a steer/follow-up pi took in. */
   | { name: "userMessage"; text: string }
   /** The pending queue changed; carries its full new contents. */

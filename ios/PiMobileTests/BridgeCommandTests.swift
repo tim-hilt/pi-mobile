@@ -3,7 +3,7 @@ import Testing
 
 @testable import PiMobile
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":2}}"# + "\n"
+private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3}}"# + "\n"
 
 private func result(_ id: Int, _ payload: String = "{}") -> String {
   #"{"type":"result","id":\#(id),"result":\#(payload)}"# + "\n"
@@ -231,25 +231,26 @@ extension BridgeCommandTests {
 // MARK: Sessions
 
 extension BridgeCommandTests {
-  @Test func listingSessionsReturnsTheLiveOnesAndWhichIsJoined() async throws {
-    let (client, bridge, received) = try await connected { _, peer in
-      peer.send(
-        result(
-          2,
-          #"{"sessions":[{"id":"s2","name":"Refactor","cwd":"/work/a","preview":"first","running":true,"activeAt":"2025-01-02T03:04:05.000Z"},{"id":"s1","cwd":"/work/b","preview":"","running":false,"lastStopReason":"error","activeAt":"2025-01-01T00:00:00.000Z"},{"id":"s0","cwd":"/work/c","preview":"","running":false,"lastStopReason":"aborted","activeAt":"2025-01-01T00:00:00.000Z"}],"joinedId":"s1"}"#
-        ))
-    }
+  @Test func theSessionListFollowsTheBridgesPushes() async throws {
+    let sessions =
+      #"{"type":"event","name":"sessions","data":{"sessions":[{"id":"s2","name":"Refactor","cwd":"/work/a","preview":"first","running":true,"activeAt":"2025-01-02T03:04:05.000Z"},{"id":"s1","cwd":"/work/b","preview":"","running":false,"lastStopReason":"error","activeAt":"2025-01-01T00:00:00.000Z"},{"id":"s0","cwd":"/work/c","preview":"","running":false,"lastStopReason":"aborted","activeAt":"2025-01-01T00:00:00.000Z"}]}}"#
+    let (client, bridge, _) = try await connected(
+      onConnect: #"{"type":"event","name":"sessions","data":{"sessions":[]}}"# + "\n"
+    ) { _, _ in }
     defer { bridge.stop() }
+    for _ in 0..<500 where client.sessions == nil { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(client.sessions == [])
 
-    let list = try await client.sessions()
+    let (pushed, pushedBridge, _) = try await connected(onConnect: sessions + "\n")
+    defer { pushedBridge.stop() }
+    for _ in 0..<500 where pushed.sessions == nil { try await Task.sleep(for: .milliseconds(10)) }
 
-    #expect(list.joinedId == "s1")
-    #expect(list.sessions.map(\.id) == ["s2", "s1", "s0"])
-    #expect(list.sessions.map(\.title) == ["Refactor", "New session", "New session"])
-    #expect(list.sessions.map(\.cwd) == ["/work/a", "/work/b", "/work/c"])
-    #expect(list.sessions.map(\.activity) == [.working, .failed, .finished])
-    #expect(list.sessions[0].activeAt == Date(timeIntervalSince1970: 1_735_787_045))
-    #expect(received.value?.first?.contains(#""name":"getSessions""#) == true)
+    let list = try #require(pushed.sessions)
+    #expect(list.map(\.id) == ["s2", "s1", "s0"])
+    #expect(list.map(\.title) == ["Refactor", "New session", "New session"])
+    #expect(list.map(\.cwd) == ["/work/a", "/work/b", "/work/c"])
+    #expect(list.map(\.activity) == [.working, .failed, .finished])
+    #expect(list[0].activeAt == Date(timeIntervalSince1970: 1_735_787_045))
   }
 
   @Test func rejoiningASessionTheBridgeNoLongerHasMarksItEnded() async throws {
@@ -261,9 +262,10 @@ extension BridgeCommandTests {
     defer { bridge.stop() }
     for _ in 0..<500 where client.transcript.sessionId == nil { try await Task.sleep(for: .milliseconds(10)) }
 
-    await #expect(throws: ProtocolError(code: "unknownSession", message: "gone")) {
-      try await client.join(sessionId: "s1")
-    }
+    client.show(sessionId: "s1")
+
+    for _ in 0..<500 where client.showFailure == nil { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(client.showFailure == "gone")
     #expect(client.transcript.hasEnded)
   }
 

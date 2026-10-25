@@ -1,5 +1,5 @@
 /** Bridge Protocol version negotiated on connect. See docs/protocol.md. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** `error` payload shared by `result` records and top-level `error` records. */
 export interface ProtocolError {
@@ -18,11 +18,24 @@ export interface Command {
 export type BridgeRecord =
   | { type: "result"; id: number; result: unknown }
   | { type: "result"; id: number; error: ProtocolError }
+  /** An event of the joined session, numbered within it. */
   | { type: "event"; seq: number; name: string; data: Record<string, unknown> }
+  /** The session list changed; about no single session, so without `seq`. */
+  | { type: "event"; name: "sessions"; data: { sessions: unknown[] } }
   /** Connection-level failure that cannot be tied to a command `id`; the socket is closed after it. */
   | { type: "error"; error: ProtocolError };
 
 export class MalformedRecordError extends Error {}
+
+/** A command refused for a known reason; surfaces to the app as a `result` with this `error`. */
+export class CommandError extends Error {
+  constructor(
+    readonly code: string,
+    message: string
+  ) {
+    super(message);
+  }
+}
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);

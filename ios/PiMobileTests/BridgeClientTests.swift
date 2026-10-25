@@ -3,7 +3,7 @@ import Testing
 
 @testable import PiMobile
 
-private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":2}}"# + "\n"
+private let ack = #"{"type":"result","id":1,"result":{"protocolVersion":3}}"# + "\n"
 
 /// Waits until `client.state` satisfies `predicate`, failing the test after 5 s.
 @MainActor
@@ -35,7 +35,7 @@ private func waitFor(
     let hello = try #require(received.value)
     #expect(hello.hasSuffix("\n"))
     #expect(hello.contains(#""name":"hello""#))
-    #expect(hello.contains(#""protocolVersion":2"#))
+    #expect(hello.contains(#""protocolVersion":3"#))
     client.disconnect()
     #expect(client.state == .offline)
   }

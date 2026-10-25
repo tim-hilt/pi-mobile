@@ -7,20 +7,25 @@ import type {
   GatewayEvent,
   GatewayStats,
   ModelInfo,
+  PromptMode,
   QueuedMessages,
   SessionHistory,
   SessionStatus,
+  ShareCalls,
   SharedSessionInfo,
   SkillInfo,
   TranscriptMessage,
 } from "./gateway.js";
-import type { Call, ShareRecord } from "./link.js";
+import type { ShareRecord } from "./link.js";
+import { CommandError } from "./protocol.js";
 
 /** What `PiShare` needs from the pi process it runs in (an extension's `pi` and `ctx`). */
 export interface PiHost {
   /** `pi.sendUserMessage`, expanding `/skill:` commands as typed input would. */
-  send(text: string, deliverAs?: "steer" | "followUp"): void;
+  send(text: string, deliverAs?: PromptMode): void;
   abort(): void;
+  /** Whether the agent is idle: no run active, nothing streaming. */
+  isIdle(): boolean;
   hasPendingMessages(): boolean;
   /** The entries of the session's current branch, oldest first. */
   branch(): SessionEntry[];
@@ -63,10 +68,15 @@ export interface PiEvent {
  * One pi session as shared over the Share Link: translates pi's extension
  * events into gateway events, answers the bridge's calls, and owns the run
  * lifecycle — a run begins at pi's `agent_start` and ends when pi reports it
- * settled — and the status (model, context fill, price), sent when it changes. Pi doesn't expose its queue to extensions, so the queue holds only
+ * settled — and the status (model, context fill, price), sent when it
+ * changes. Pi doesn't expose its queue to extensions, so the queue holds only
  * what arrived over the link.
+ *
+ * The `ShareCalls` are synchronous on purpose: a reply must go out before any
+ * later event, or a `history` would miss what it claims to cover. Only
+ * `setModel`, whose outcome pi decides later, answers with a Promise.
  */
-export class PiShare {
+export class PiShare implements ShareCalls {
   private running = false;
   /** Stop reason of the latest assistant message of the current run. */
   private lastAssistant:
@@ -95,10 +105,7 @@ export class PiShare {
 
   info(): SharedSessionInfo {
     const name = this.host.sessionName();
-    if (this.preview === undefined) {
-      const first = this.history().messages.find((m) => m.role === "user");
-      this.preview = first?.role === "user" ? first.text : "";
-    }
+    this.preview ??= this.firstUserText();
     return {
       id: this.host.sessionId(),
       ...(name !== undefined && { name }),
@@ -112,34 +119,30 @@ export class PiShare {
     this.sink({ type: "info", info: this.info() });
   }
 
-  /**
-   * Answers one bridge call. Synchronous on purpose: the reply must go out
-   * before any later event, or a `history` would miss what it claims to cover.
-   * Only `setModel`, whose outcome pi decides later, answers with a Promise.
-   */
-  call(call: Call): unknown {
-    switch (call.method) {
-      case "prompt":
-        return this.host.send(call.text);
-      case "steer":
-        return this.enqueue("steering", call.text);
-      case "followUp":
-        return this.enqueue("followUp", call.text);
-      case "abort":
-        return this.host.abort();
-      case "history":
-        return this.history();
-      case "skills":
-        return this.skills();
-      case "stats":
-        return this.stats();
-      case "models":
-        return this.host
-          .models()
-          .map(({ provider, id, name }) => ({ provider, id, name }));
-      case "setModel":
-        return this.host.setModel(call.provider, call.modelId);
-    }
+  prompt(text: string, mode?: PromptMode): void {
+    if (this.host.isIdle()) return this.host.send(text);
+    if (!mode)
+      throw new CommandError(
+        "runActive",
+        'a run is active; set mode to "steer" or "followUp"'
+      );
+    this.host.send(text, mode);
+    const kind = mode === "steer" ? "steering" : "followUp";
+    this.setQueue({ ...this.queued, [kind]: [...this.queued[kind], text] });
+  }
+
+  abort(): void {
+    this.host.abort();
+  }
+
+  models(): ModelInfo[] {
+    return this.host
+      .models()
+      .map(({ provider, id, name }) => ({ provider, id, name }));
+  }
+
+  setModel(provider: string, id: string): Promise<void> {
+    return this.host.setModel(provider, id);
   }
 
   /** Translates one pi session event. */
@@ -219,7 +222,10 @@ export class PiShare {
     if (STATUS_CHANGES.has(event.type)) this.reportStatus();
   }
 
-  /** The current branch as the app shows it: each tool call after the turn that made it. */
+  /**
+   * The current branch as the app shows it, each tool call after the turn
+   * that made it. The bridge now knows the status: only later changes are sent.
+   */
   history(): SessionHistory {
     const messages: TranscriptMessage[] = [];
     /** Tool calls by id, to complete with their result message. */
@@ -287,7 +293,7 @@ export class PiShare {
     this.emit({ name: "status", ...status });
   }
 
-  private skills(): SkillInfo[] {
+  skills(): SkillInfo[] {
     return this.host
       .commands()
       .filter((c) => c.source === "skill")
@@ -298,7 +304,7 @@ export class PiShare {
   }
 
   /** Counts over the whole session, as pi's `/session` reports them. */
-  private stats(): GatewayStats {
+  stats(): GatewayStats {
     const stats = {
       userMessages: 0,
       assistantMessages: 0,
@@ -333,9 +339,14 @@ export class PiShare {
     return stats;
   }
 
-  private enqueue(kind: keyof QueuedMessages, text: string): void {
-    this.host.send(text, kind === "steering" ? "steer" : "followUp");
-    this.setQueue({ ...this.queued, [kind]: [...this.queued[kind], text] });
+  /** The text of the branch's first user message, `""` if none. */
+  private firstUserText(): string {
+    for (const entry of this.host.branch()) {
+      if (entry.type !== "message") continue;
+      const message = entry.message as PiMessage;
+      if (message.role === "user") return userText(message.content);
+    }
+    return "";
   }
 
   /** A user message entered the conversation; if it was queued here, it no longer is. */
