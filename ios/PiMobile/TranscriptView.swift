@@ -19,6 +19,8 @@ struct TranscriptView: View {
         client: client, sessionId: sessionId, isLive: isLive, isRunning: client.transcript.isRunning,
         queue: client.transcript.queue, status: client.transcript.status
       ) { showingModels = true }
+      // Laid out before the conversation, so open suggestions get their full height.
+      .layoutPriority(1)
       .disabled(!isShown || client.state != .connected)
     }
     .navigationTitle(isShown ? client.transcript.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "" : "")

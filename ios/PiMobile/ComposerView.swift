@@ -198,37 +198,70 @@ private struct QueueView: View {
   }
 }
 
-/// One tap to take a suggestion, or the trailing button to wave them all away.
+/// An autocomplete card above the field: one tap takes a suggestion, the header's button waves them
+/// all away. The first row is what Tab takes.
 private struct SuggestionBar: View {
   let picks: [Suggestions.Pick]
   let accept: (Suggestions.Pick) -> Void
   let dismiss: () -> Void
 
   var body: some View {
-    HStack(spacing: 8) {
-      ScrollView(.horizontal, showsIndicators: false) {
-        LazyHStack(spacing: 8) {
-          ForEach(picks, id: \.label) { pick in
-            Button { accept(pick) } label: { chip(pick) }
-              .buttonStyle(.bordered)
-              .buttonBorderShape(.capsule)
-              .controlSize(.small)
-          }
-        }
+    VStack(spacing: 0) {
+      HStack {
+        Text(title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+        Spacer()
+        Button("Dismiss suggestions", systemImage: "xmark.circle.fill", action: dismiss)
+          .labelStyle(.iconOnly)
+          .symbolRenderingMode(.hierarchical)
+          .foregroundStyle(.secondary)
       }
-      Button("Dismiss suggestions", systemImage: "xmark.circle.fill", action: dismiss)
-        .labelStyle(.iconOnly)
-        .foregroundStyle(.secondary)
+      .padding(.horizontal, 14)
+      .padding(.vertical, 8)
+      Divider()
+      // Grows with the rows, scrolls beyond a few.
+      ViewThatFits(in: .vertical) {
+        rows
+        ScrollView { rows }
+      }
+      .frame(maxHeight: 420)
+    }
+    .background(.background, in: .rect(cornerRadius: 20))
+    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.separator))
+  }
+
+  private var title: String {
+    picks.first?.isFile == true ? "Files" : "Skills"
+  }
+
+  private var rows: some View {
+    VStack(spacing: 0) {
+      ForEach(Array(picks.enumerated()), id: \.element.label) { index, pick in
+        if index > 0 { Divider().padding(.leading, pick.isFile ? 46 : 14) }
+        Button { accept(pick) } label: { row(pick) }
+          .buttonStyle(.plain)
+      }
     }
   }
 
-  @ViewBuilder private func chip(_ pick: Suggestions.Pick) -> some View {
-    switch pick {
-    case .skill(let skill):
-      Label(skill.name, systemImage: "slash.circle").lineLimit(1)
-    case .file(let path):
-      Label(path, systemImage: "doc").lineLimit(1).truncationMode(.head)
+  private func row(_ pick: Suggestions.Pick) -> some View {
+    HStack(spacing: 12) {
+      if pick.isFile {
+        Image(systemName: "doc")
+          .foregroundStyle(.tint)
+          .frame(width: 20)
+      }
+      VStack(alignment: .leading, spacing: 2) {
+        Text(pick.title).lineLimit(1)
+        if pick.isFile, let subtitle = pick.subtitle, !subtitle.isEmpty {
+          Text(subtitle).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            .truncationMode(pick.isFile ? .head : .tail)  // folders keep their nearest part
+        }
+      }
+      Spacer(minLength: 0)
     }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 9)
+    .contentShape(.rect)
   }
 }
 
@@ -238,6 +271,26 @@ private extension Suggestions.Pick {
     switch self {
     case .skill(let skill): skill.name
     case .file(let path): path
+    }
+  }
+
+  var isFile: Bool {
+    if case .file = self { true } else { false }
+  }
+
+  /// Skill name, or file name.
+  var title: String {
+    switch self {
+    case .skill(let skill): skill.name
+    case .file(let path): (path as NSString).lastPathComponent
+    }
+  }
+
+  /// Skill description, or the file's folder.
+  var subtitle: String? {
+    switch self {
+    case .skill(let skill): skill.description
+    case .file(let path): (path as NSString).deletingLastPathComponent
     }
   }
 }

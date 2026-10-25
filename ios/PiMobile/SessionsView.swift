@@ -13,11 +13,7 @@ struct SessionsView: View {
     content
       .toolbar {
         // A logo, not a button: no glass behind it.
-        if #available(iOS 26, *) {
-          ToolbarItem(placement: .topBarLeading) { logo }.sharedBackgroundVisibility(.hidden)
-        } else {
-          ToolbarItem(placement: .topBarLeading) { logo }
-        }
+        ToolbarItem(placement: .topBarLeading) { logo }.sharedBackgroundVisibility(.hidden)
       }
       .sheet(isPresented: $showingScanner) { PairingScanner(onScan: onPair) }
   }
