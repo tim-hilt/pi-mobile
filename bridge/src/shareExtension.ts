@@ -136,26 +136,28 @@ function linkClient(): LinkClient {
 /** Least time between two attempts to start the bridge from this process. */
 const RESPAWN_MS = 15_000;
 
-/** Starts the built bridge (`npm run build -w bridge`) detached, logging next to its socket. */
+/** Rebuilds (`tsc`, incremental-fast) then starts the bridge detached, logging next to its socket, so source edits apply on restart. */
 function bridgeStarter(): () => void {
-  const main = join(
-    dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "dist",
-    "main.js"
-  );
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const main = join(root, "dist", "main.js");
   let lastStart = -Infinity;
   return () => {
-    if (!existsSync(main)) return;
+    if (!existsSync(join(root, "tsconfig.build.json"))) return;
     if (Date.now() - lastStart < RESPAWN_MS) return;
     lastStart = Date.now();
     const dir = dirname(defaultSocketPath());
     mkdirSync(dir, { recursive: true });
     const log = openSync(join(dir, "bridge.log"), "a");
-    const child = spawn(process.env.PI_BRIDGE_NODE ?? "node", [main], {
-      detached: true,
-      stdio: ["ignore", log, log],
-    });
+    const child = spawn(
+      "sh",
+      [
+        "-c",
+        '../node_modules/.bin/tsc -p tsconfig.build.json; exec "$0" "$1"',
+        process.env.PI_BRIDGE_NODE ?? "node",
+        main,
+      ],
+      { cwd: root, detached: true, stdio: ["ignore", log, log] }
+    );
     child.on("error", () => {});
     child.unref();
   };
