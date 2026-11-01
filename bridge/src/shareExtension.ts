@@ -11,6 +11,7 @@ import { defaultSocketPath } from "./link.js";
 import { LinkClient } from "./linkClient.js";
 import { pairingQr } from "./pairing.js";
 import { PiShare, type PiEvent } from "./piShare.js";
+import { PrintRun } from "./printRun.js";
 import {
   DISABLE_FOCUS_REPORTING,
   ENABLE_FOCUS_REPORTING,
@@ -19,17 +20,33 @@ import {
 
 /**
  * Pi extension that shares every interactive pi session with the bridge, so
- * the app can list and join it. The first pi to find no bridge starts one
- * (detached, outliving it); see README. `/show-bridge-qr` shows the QR code
+ * the app can list and join it, and reports the settled runs of print-mode
+ * pi. The first interactive pi to find no bridge starts one (detached,
+ * outliving it); see README. `/show-bridge-qr` shows the QR code
  * the app scans to log in.
  */
 export default function share(pi: ExtensionAPI) {
   let current: PiShare | undefined;
+  /** Set in print mode only, with the link its runs are reported on. */
+  let print: { run: PrintRun; link: LinkClient } | undefined;
   let stopFocusInput: (() => void) | undefined;
 
   pi.on("session_start", (_event, ctx) => {
-    // Print and JSON runs are one-shot; only sessions someone works in are shared.
-    if (!ctx.hasUI) return;
+    if (!ctx.hasUI) {
+      // Print and JSON runs are one-shot: not shared, but their settled runs are reported.
+      // They never start the bridge; without one, nothing is sent.
+      const link = linkClient(() => {});
+      const run = new PrintRun(
+        {
+          sessionId: () => ctx.sessionManager.getSessionId(),
+          sessionName: () => pi.getSessionName(),
+          cwd: ctx.cwd,
+        },
+        (record) => link.send(record)
+      );
+      print = { run, link };
+      return;
+    }
     const link = linkClient();
     current = new PiShare(host(pi, ctx), (record) => link.send(record));
     link.attach(current);
@@ -44,7 +61,16 @@ export default function share(pi: ExtensionAPI) {
     });
   });
   pi.on("session_info_changed", () => current?.infoChanged());
-  pi.on("session_shutdown", (event) => {
+  pi.on("session_shutdown", async (event) => {
+    if (print) {
+      const { link } = print;
+      print = undefined;
+      // Pi exits next: give the report time to leave, but never hold the script up.
+      await link.flush();
+      link.close();
+      delete (globalThis as Record<symbol, unknown>)[LINK];
+      return;
+    }
     const reporting = stopFocusInput !== undefined;
     stopFocusInput?.();
     stopFocusInput = undefined;
@@ -86,8 +112,10 @@ export default function share(pi: ExtensionAPI) {
       }));
     },
   });
-  const forward = (event: { type: string }) =>
+  const forward = (event: { type: string }) => {
     current?.handle(event as PiEvent);
+    print?.run.handle(event as PiEvent);
+  };
   pi.on("agent_start", forward);
   pi.on("agent_settled", forward);
   pi.on("message_update", forward);
@@ -145,12 +173,9 @@ function host(pi: ExtensionAPI, ctx: ExtensionContext) {
  */
 const LINK = Symbol.for("pi-native-client.link");
 
-function linkClient(): LinkClient {
+function linkClient(startBridge = bridgeStarter()): LinkClient {
   const global = globalThis as Record<symbol, LinkClient | undefined>;
-  return (global[LINK] ??= new LinkClient(
-    defaultSocketPath(),
-    bridgeStarter()
-  ));
+  return (global[LINK] ??= new LinkClient(defaultSocketPath(), startBridge));
 }
 
 /** Least time between two attempts to start the bridge from this process. */

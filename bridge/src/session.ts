@@ -6,7 +6,7 @@ import type {
   SharedSessionInfo,
   StopReason,
 } from "./gateway.js";
-import type { RunNotifier } from "./ntfy.js";
+import type { RunNotifier, RunOutcome } from "./ntfy.js";
 
 /** A bridge → app event as it goes on the wire, minus the `type` discriminator. */
 export interface BridgeEvent {
@@ -254,6 +254,7 @@ export class Session {
           stopReason: event.stopReason,
           errorMessage: event.errorMessage,
           lastText: this.lastText,
+          listed: true,
           joined: this.listeners.size > 0,
           focused: this.gateway.terminalFocused(),
         });
@@ -317,6 +318,14 @@ export class SessionHub {
     this.sessions.add(session);
     this.changed();
     return session;
+  }
+
+  /**
+   * A run of a pi that isn't shared (print mode) settled. Announced like any
+   * other run; nobody can have joined it or watch its terminal.
+   */
+  unlistedRunSettled(run: RunOutcome): void {
+    this.notifier?.runSettled({ ...run, listed: false, joined: false });
   }
 
   remove(session: Session): void {

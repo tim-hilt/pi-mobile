@@ -158,6 +158,7 @@ export async function listenForShares(
               }),
         });
       }
+      if (record.type === "settled") return hub.unlistedRunSettled(record.run);
       if (gateway) return gateway.receive(record);
       if (record.type !== "announce") return;
       gateway = new LinkGateway(socket, record.info);

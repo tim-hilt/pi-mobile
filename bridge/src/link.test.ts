@@ -8,6 +8,7 @@ import { LinkClient } from "./linkClient.js";
 import { listenForShares } from "./linkGateway.js";
 import type { RunNotifier, SettledRun } from "./ntfy.js";
 import { PiShare, type PiEvent, type PiHost } from "./piShare.js";
+import { PrintRun } from "./printRun.js";
 import { CommandError } from "./protocol.js";
 import { SessionHub, type BridgeEvent } from "./session.js";
 
@@ -326,4 +327,112 @@ test("focus reported before the session is shared counts once it is", async () =
 
   await eventually(() => runs.length === 1);
   expect(runs[0]).toMatchObject({ focused: true });
+});
+
+/** Resolves once `link` reached the bridge (asking for the pairing URL waits for that). */
+const connected = (link: LinkClient) => link.pairingUrl().catch(() => {});
+
+/** A `pi -p` process: no shared session, only what its runs report. */
+function printPi(link: LinkClient, id = "p1", name?: string) {
+  return new PrintRun(
+    { sessionId: () => id, sessionName: () => name, cwd: "/work/leaf" },
+    (record) => link.send(record)
+  );
+}
+
+const answered = (text: string, stopReason = "stop", errorMessage?: string) =>
+  ({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text }],
+      stopReason,
+      errorMessage,
+    },
+  }) as PiEvent;
+
+/** Pi's events for one print-mode run that ends with `last`. */
+const printRun = (run: PrintRun, last: PiEvent, aborted = false) => {
+  run.handle({ type: "agent_start" } as PiEvent);
+  run.handle(answered("first"));
+  run.handle(last);
+  run.handle({ type: "agent_settled", aborted } as PiEvent);
+};
+
+test("a settled print-mode run is reported without being listed", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const { runs, notifier } = recording();
+  const hub = await listening(path, notifier);
+  const link = client(path);
+  await connected(link);
+
+  printRun(printPi(link, "p1", "nightly"), answered("All done."));
+
+  await eventually(() => runs.length === 1);
+  expect(runs[0]).toEqual({
+    sessionId: "p1",
+    cwd: "/work/leaf",
+    sessionName: "nightly",
+    stopReason: "success",
+    lastText: "All done.",
+    listed: false,
+    joined: false,
+  });
+  expect(hub.list()).toEqual([]);
+});
+
+test("a print-mode run that fails reports its error", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const { runs, notifier } = recording();
+  await listening(path, notifier);
+  const link = client(path);
+  await connected(link);
+
+  printRun(printPi(link), answered("", "error", "rate limited"));
+
+  await eventually(() => runs.length === 1);
+  expect(runs[0]).toMatchObject({
+    stopReason: "error",
+    errorMessage: "rate limited",
+    lastText: "first",
+  });
+});
+
+test("an aborted print-mode run is not reported, the next one is", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const { runs, notifier } = recording();
+  await listening(path, notifier);
+  const link = client(path);
+  await connected(link);
+  const run = printPi(link);
+
+  printRun(run, answered("", "aborted"), true);
+  printRun(run, answered("again"));
+
+  await eventually(() => runs.length === 1);
+  expect(runs[0]).toMatchObject({ lastText: "again" });
+});
+
+test("a print-mode pi that exits right after its run still delivers the report", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const { runs, notifier } = recording();
+  await listening(path, notifier);
+  const link = client(path);
+  await connected(link);
+
+  printRun(printPi(link), answered("bye"));
+  await link.flush();
+  link.close();
+
+  await eventually(() => runs.length === 1);
+});
+
+test("with no bridge, flushing returns at once", async () => {
+  const link = client(join(tempDir(), "bridge.sock"));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const started = Date.now();
+
+  await link.flush();
+
+  expect(Date.now() - started).toBeLessThan(200);
 });

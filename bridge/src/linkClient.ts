@@ -100,6 +100,24 @@ export class LinkClient {
     return record.url;
   }
 
+  /**
+   * Resolves once what was sent has left this process, so a pi about to exit
+   * doesn't lose it, or after `waitMs`. Returns at once without a connection:
+   * nothing was sent then.
+   */
+  async flush(waitMs = 1_000): Promise<void> {
+    const socket = this.socket;
+    if (!this.connected || !socket) return;
+    let timer: NodeJS.Timeout | undefined;
+    // An empty write completes after every earlier write. The timer is
+    // referenced: the link is unreferenced and mustn't let pi exit meanwhile.
+    await Promise.race([
+      new Promise<void>((resolve) => socket.write("", () => resolve())),
+      new Promise<void>((resolve) => (timer = setTimeout(resolve, waitMs))),
+    ]);
+    clearTimeout(timer);
+  }
+
   /** Pi is quitting: ends the link for good, so the bridge drops the session. */
   close(): void {
     this.closed = true;

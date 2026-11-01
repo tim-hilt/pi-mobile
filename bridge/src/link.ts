@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Socket } from "node:net";
 import { createInterface } from "node:readline";
+import type { RunOutcome } from "./ntfy.js";
 import type { GatewayEvent, SharedSessionInfo, ShareCalls } from "./gateway.js";
 
 /**
@@ -35,6 +36,11 @@ export type ShareRecord =
    * across session replacements; absent until the terminal first reports one.
    */
   | { type: "focus"; focused: boolean }
+  /**
+   * A print-mode pi's run settled. Sent without `announce`: the session isn't
+   * listed, the bridge only announces the run.
+   */
+  | { type: "settled"; run: RunOutcome }
   /** Asks for the app's pairing URL; allowed before `announce`. */
   | { type: "pairing" };
 

@@ -13,6 +13,7 @@ import type {
   ShareCalls,
   SharedSessionInfo,
   SkillInfo,
+  StopReason,
   TranscriptMessage,
 } from "./gateway.js";
 import type { ShareRecord } from "./link.js";
@@ -370,29 +371,34 @@ export class PiShare implements ShareCalls {
     });
   }
 
-  /**
-   * Pi's `agent_settled` only says whether the run was aborted; whether it
-   * failed is recorded on the final assistant message. Earlier failures that
-   * a retry recovered from are superseded by that final message.
-   */
   private settled(aborted: boolean): GatewayEvent {
-    const { stopReason, errorMessage } = this.lastAssistant ?? {};
-    if (aborted || stopReason === "aborted")
-      return { name: "runSettled", stopReason: "aborted" };
-    if (stopReason === "error")
-      return {
-        name: "runSettled",
-        stopReason: "error",
-        ...(errorMessage !== undefined && { errorMessage }),
-      };
-    if (stopReason === "length")
-      return { name: "runSettled", stopReason: "length" };
-    return { name: "runSettled", stopReason: "success" };
+    return { name: "runSettled", ...runOutcome(aborted, this.lastAssistant) };
   }
 
   private emit(event: GatewayEvent): void {
     this.sink({ type: "event", event });
   }
+}
+
+/**
+ * How a run ended. Pi's `agent_settled` only says whether the run was
+ * aborted; whether it failed is recorded on the final assistant message
+ * (`lastAssistant`). Earlier failures that a retry recovered from are
+ * superseded by that final message.
+ */
+export function runOutcome(
+  aborted: boolean,
+  lastAssistant: { stopReason?: string; errorMessage?: string } | undefined
+): { stopReason: StopReason; errorMessage?: string } {
+  const { stopReason, errorMessage } = lastAssistant ?? {};
+  if (aborted || stopReason === "aborted") return { stopReason: "aborted" };
+  if (stopReason === "error")
+    return {
+      stopReason: "error",
+      ...(errorMessage !== undefined && { errorMessage }),
+    };
+  if (stopReason === "length") return { stopReason: "length" };
+  return { stopReason: "success" };
 }
 
 interface PiUsage {
@@ -413,7 +419,7 @@ interface PiBlock {
 }
 
 /** The parts of pi's agent messages the share reads. */
-type PiMessage =
+export type PiMessage =
   | { role: "user"; content: string | PiBlock[] }
   | {
       role: "assistant";
@@ -445,7 +451,10 @@ function userText(content: string | PiBlock[]): string {
 }
 
 /** Concatenates the `kind` blocks of a message's content (`text` or `thinking`). */
-function joinBlocks(content: PiBlock[], kind: "text" | "thinking"): string {
+export function joinBlocks(
+  content: PiBlock[],
+  kind: "text" | "thinking"
+): string {
   let joined = "";
   for (const block of content) {
     if (block.type === "text" && kind === "text") joined += block.text ?? "";

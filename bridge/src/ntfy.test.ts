@@ -442,3 +442,38 @@ test("a session is announced again once its app joins another", async () => {
 
   await ntfy.firstPost();
 });
+
+test("a print-mode run is announced like any other, but tapping it opens nothing", async () => {
+  const ntfy = await fakeNtfy();
+  const bridge = await startNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+
+  bridge.hub.unlistedRunSettled({
+    sessionId: "p1",
+    cwd: "/work/leaf",
+    stopReason: "success",
+    lastText: "Done.",
+  });
+
+  const body = JSON.parse((await ntfy.firstPost()).body);
+  expect(body).toMatchObject({
+    title: "leaf: Agent Finished",
+    message: "Done.",
+  });
+  expect(body).not.toHaveProperty("click");
+});
+
+test("print-mode runs are held back only by the cooldown", async () => {
+  const ntfy = await fakeNtfy();
+  const bridge = await startNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  const run = { sessionId: "p1", cwd: "/w", stopReason: "success" as const };
+
+  bridge.hub.unlistedRunSettled(run);
+  bridge.hub.unlistedRunSettled(run);
+  await settle();
+  expect(ntfy.posts).toHaveLength(1);
+
+  afterCooldown();
+  bridge.hub.unlistedRunSettled(run);
+  await settle();
+  expect(ntfy.posts).toHaveLength(2);
+});

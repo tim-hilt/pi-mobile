@@ -9,8 +9,8 @@ export interface NtfyConfig {
   topic: string;
 }
 
-/** What a settled run announces. */
-export interface SettledRun {
+/** What a settled run announces; what a print-mode pi reports over the Share Link. */
+export interface RunOutcome {
   sessionId: string;
   cwd: string;
   /** Absent while the session has no user-given name. */
@@ -19,6 +19,12 @@ export interface SettledRun {
   errorMessage?: string;
   /** Text of the run's latest assistant message that had any. */
   lastText?: string;
+}
+
+/** A settled run, with what the bridge knows about who is looking. */
+export interface SettledRun extends RunOutcome {
+  /** Whether the run belongs to a listed session; print-mode runs don't, so the app can't open them. */
+  listed: boolean;
   /** Whether an app connection is joined to the session, i.e. someone is viewing it. */
   joined: boolean;
   /** Whether the session's terminal is focused; absent when unknown. */
@@ -62,7 +68,9 @@ export class NtfyNotifier implements RunNotifier {
       markdown: true,
       icon: ICON,
       // Opens Pi Mobile on this session (see docs/protocol.md, "Notifications").
-      click: `pimobile://session?id=${encodeURIComponent(run.sessionId)}`,
+      ...(run.listed && {
+        click: `pimobile://session?id=${encodeURIComponent(run.sessionId)}`,
+      }),
     };
     // A missed notification must never affect the session it reports on.
     fetch(this.url, {
