@@ -254,6 +254,7 @@ export class Session {
           stopReason: event.stopReason,
           errorMessage: event.errorMessage,
           lastText: this.lastText,
+          joined: this.listeners.size > 0,
         });
       this.lastText = undefined;
     }

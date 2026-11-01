@@ -19,6 +19,8 @@ export interface SettledRun {
   errorMessage?: string;
   /** Text of the run's latest assistant message that had any. */
   lastText?: string;
+  /** Whether an app connection is joined to the session, i.e. someone is viewing it. */
+  joined: boolean;
 }
 
 /** Announces runs as they settle. */
