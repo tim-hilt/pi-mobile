@@ -67,9 +67,7 @@ export default function share(pi: ExtensionAPI) {
       print = undefined;
       // Pi exits next: give the report time to leave, but never hold the script up.
       await link.flush();
-      link.close();
-      delete (globalThis as Record<symbol, unknown>)[LINK];
-      return;
+      return closeLink();
     }
     const reporting = stopFocusInput !== undefined;
     stopFocusInput?.();
@@ -82,8 +80,7 @@ export default function share(pi: ExtensionAPI) {
     if (event.reason === "quit") {
       // Replacement keeps reporting on: the next session listens again.
       if (reporting) process.stdout.write(DISABLE_FOCUS_REPORTING);
-      link.close();
-      delete (globalThis as Record<symbol, unknown>)[LINK];
+      closeLink();
     }
   });
   pi.registerCommand("show-bridge-qr", {
@@ -176,6 +173,13 @@ const LINK = Symbol.for("pi-native-client.link");
 function linkClient(startBridge = bridgeStarter()): LinkClient {
   const global = globalThis as Record<symbol, LinkClient | undefined>;
   return (global[LINK] ??= new LinkClient(defaultSocketPath(), startBridge));
+}
+
+/** Pi is quitting: ends the process's link for good. */
+function closeLink(): void {
+  const global = globalThis as Record<symbol, LinkClient | undefined>;
+  global[LINK]?.close();
+  delete global[LINK];
 }
 
 /** Least time between two attempts to start the bridge from this process. */

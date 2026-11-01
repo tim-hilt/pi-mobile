@@ -336,6 +336,7 @@ test("presence is probed when a run settles, not before", async () => {
     { baseUrl: ntfy.baseUrl, topic: "t" },
     probe
   );
+  gateway.focus = true;
   gateway.emit({ name: "runStarted" });
   await settle();
   expect(probe).not.toHaveBeenCalled();
@@ -345,6 +346,24 @@ test("presence is probed when a run settles, not before", async () => {
 
   expect(probe).toHaveBeenCalledTimes(1);
 });
+
+test.each<boolean | undefined>([false, undefined])(
+  "presence isn't probed for a run whose terminal focus is %s",
+  async (focus) => {
+    const ntfy = await fakeNtfy();
+    const probe = vi.fn(probing("present"));
+    const gateway = await bridgeNotifying(
+      { baseUrl: ntfy.baseUrl, topic: "t" },
+      probe
+    );
+    gateway.focus = focus;
+
+    runThrough(gateway, "success");
+    await ntfy.firstPost();
+
+    expect(probe).not.toHaveBeenCalled();
+  }
+);
 
 /** A real app connection: handshaken and joined to `sessionId`, snapshot received. */
 async function appJoins(bridge: Bridge, sessionId: string) {

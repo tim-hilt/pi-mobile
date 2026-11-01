@@ -28,7 +28,7 @@ export interface BridgeOptions {
   replayLimit?: number;
   /** When set, every settled run is announced on this ntfy topic. */
   ntfy?: NtfyConfig;
-  /** Asked whether the user is at the Mac when a run settles. Defaults to reading macOS `ioreg`. */
+  /** Asked whether the user is at the Mac when a run of a focused terminal settles. Defaults to reading macOS `ioreg`. */
   presence?: PresenceProbe;
 }
 
