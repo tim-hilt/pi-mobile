@@ -1,8 +1,9 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { FakeGateway } from "./fakeGateway.js";
 import type { StopReason } from "./gateway.js";
+import type { Presence, PresenceProbe } from "./presence.js";
 import { startBridge } from "./server.js";
 
 interface Post {
@@ -12,9 +13,19 @@ interface Post {
 }
 
 const cleanups: Array<() => Promise<void> | void> = [];
+// Only the clock is faked, so tests can step past the notification cooldown.
+beforeEach(() => void vi.useFakeTimers({ toFake: ["Date"] }));
 afterEach(async () => {
+  vi.useRealTimers();
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
+
+const COOLDOWN_MS = 5000;
+const afterCooldown = () => vi.setSystemTime(Date.now() + COOLDOWN_MS);
+const probing =
+  (presence: Presence): PresenceProbe =>
+  async () =>
+    presence;
 
 /** A real local HTTP server standing in for ntfy.sh; records every request and answers with `status`. */
 async function fakeNtfy(status = 200) {
@@ -43,13 +54,26 @@ async function fakeNtfy(status = 200) {
   };
 }
 
-async function bridgeNotifying(ntfy: { baseUrl: string; topic: string }) {
-  const gateway = new FakeGateway();
-  const b = await startBridge({ token: "t", port: 0, ntfy });
+async function startNotifying(
+  ntfy: { baseUrl: string; topic: string },
+  presence: PresenceProbe = probing("present")
+) {
+  const b = await startBridge({ token: "t", port: 0, ntfy, presence });
   cleanups.push(() => b.close());
-  b.hub.add(gateway);
+  return b;
+}
+
+async function bridgeNotifying(
+  ntfy: { baseUrl: string; topic: string },
+  presence?: PresenceProbe
+) {
+  const gateway = new FakeGateway();
+  (await startNotifying(ntfy, presence)).hub.add(gateway);
   return gateway;
 }
+
+/** Lets in-flight notification decisions and deliveries finish. */
+const settle = () => new Promise((r) => setTimeout(r, 50));
 
 const runThrough = (gateway: FakeGateway, stopReason: StopReason) => {
   gateway.emit({ name: "runStarted" });
@@ -145,9 +169,10 @@ test("a run without an answer falls back to its error, then a generic message", 
     stopReason: "error",
     errorMessage: "rate limited",
   });
+  await ntfy.firstPost();
+  afterCooldown();
   runThrough(gateway, "success");
 
-  await ntfy.firstPost();
   while (ntfy.posts.length < 2) await new Promise((r) => setTimeout(r, 5));
 
   expect(ntfy.posts.map((p) => JSON.parse(p.body).message)).toEqual([
@@ -162,6 +187,8 @@ test("an answer from an earlier run is not reported again", async () => {
   gateway.emit({ name: "runStarted" });
   gateway.emit({ name: "messageEnd", text: "old answer", thinking: "" });
   gateway.emit({ name: "runSettled", stopReason: "success" });
+  await ntfy.firstPost();
+  afterCooldown();
   runThrough(gateway, "error");
 
   while (ntfy.posts.length < 2) await new Promise((r) => setTimeout(r, 5));
@@ -212,4 +239,70 @@ test("an unreachable or failing ntfy never disturbs the bridge", async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   expect(unhandled).toEqual([]);
+});
+
+test("a burst of settled runs in one session notifies once per 5 s", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+
+  runThrough(gateway, "success");
+  runThrough(gateway, "error");
+  await settle();
+  expect(ntfy.posts).toHaveLength(1);
+
+  vi.setSystemTime(Date.now() + COOLDOWN_MS - 1);
+  runThrough(gateway, "success");
+  await settle();
+  expect(ntfy.posts).toHaveLength(1);
+
+  vi.setSystemTime(Date.now() + 1);
+  runThrough(gateway, "success");
+  await settle();
+  expect(ntfy.posts).toHaveLength(2);
+});
+
+test("the cooldown is per session", async () => {
+  const ntfy = await fakeNtfy();
+  const bridge = await startNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  const [one, two] = [new FakeGateway("s1"), new FakeGateway("s2")];
+  bridge.hub.add(one);
+  bridge.hub.add(two);
+
+  runThrough(one, "success");
+  runThrough(two, "success");
+  await settle();
+
+  expect(ntfy.posts).toHaveLength(2);
+});
+
+test.each<Presence>(["away", "present", "unknown"])(
+  "with the terminal's focus unknown, a %s user is notified",
+  async (presence) => {
+    const ntfy = await fakeNtfy();
+    const gateway = await bridgeNotifying(
+      { baseUrl: ntfy.baseUrl, topic: "t" },
+      probing(presence)
+    );
+
+    runThrough(gateway, "success");
+
+    await ntfy.firstPost();
+  }
+);
+
+test("presence is probed when a run settles, not before", async () => {
+  const ntfy = await fakeNtfy();
+  const probe = vi.fn(probing("away"));
+  const gateway = await bridgeNotifying(
+    { baseUrl: ntfy.baseUrl, topic: "t" },
+    probe
+  );
+  gateway.emit({ name: "runStarted" });
+  await settle();
+  expect(probe).not.toHaveBeenCalled();
+
+  gateway.emit({ name: "runSettled", stopReason: "success" });
+  await ntfy.firstPost();
+
+  expect(probe).toHaveBeenCalledTimes(1);
 });

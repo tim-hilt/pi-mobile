@@ -12,7 +12,9 @@ import {
   type Command,
   type ProtocolError,
 } from "./protocol.js";
+import { NotificationGate } from "./notificationGate.js";
 import { NtfyNotifier, type NtfyConfig } from "./ntfy.js";
+import { ioregProbe, type PresenceProbe } from "./presence.js";
 import { SessionHub, type Session } from "./session.js";
 
 export interface BridgeOptions {
@@ -26,6 +28,8 @@ export interface BridgeOptions {
   replayLimit?: number;
   /** When set, every settled run is announced on this ntfy topic. */
   ntfy?: NtfyConfig;
+  /** Asked whether the user is at the Mac when a run settles. Defaults to reading macOS `ioreg`. */
+  presence?: PresenceProbe;
 }
 
 export interface Bridge {
@@ -53,8 +57,17 @@ const CLOSE_INTERNAL_ERROR = 1011;
  * the socket.
  */
 export async function startBridge(options: BridgeOptions): Promise<Bridge> {
-  const { token, port, pingIntervalMs = 30_000, replayLimit, ntfy } = options;
-  const hub = new SessionHub(replayLimit, ntfy && new NtfyNotifier(ntfy));
+  const {
+    token,
+    port,
+    pingIntervalMs = 30_000,
+    replayLimit,
+    ntfy,
+    presence = ioregProbe,
+  } = options;
+  const notifier =
+    ntfy && new NotificationGate(new NtfyNotifier(ntfy), presence);
+  const hub = new SessionHub(replayLimit, notifier);
   const expected = Buffer.from(`Bearer ${token}`);
   const isAuthorized = (req: IncomingMessage): boolean => {
     const given = Buffer.from(req.headers.authorization ?? "");
