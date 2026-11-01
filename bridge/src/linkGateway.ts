@@ -25,6 +25,7 @@ export class LinkGateway implements SessionGateway {
   /** Calls awaiting pi's reply, by id; invoked as soon as the reply is read. */
   private pending = new Map<number, (result: unknown, error?: Error) => void>();
   private nextId = 1;
+  private focused: boolean | undefined;
 
   constructor(
     private socket: Socket,
@@ -60,6 +61,10 @@ export class LinkGateway implements SessionGateway {
     return this.current;
   }
 
+  terminalFocused(): boolean | undefined {
+    return this.focused;
+  }
+
   subscribe(listener: (event: GatewayEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -78,6 +83,9 @@ export class LinkGateway implements SessionGateway {
         break;
       case "event":
         this.emit(record.event);
+        break;
+      case "focus":
+        this.focused = record.focused;
         break;
       case "reply": {
         const onReply = this.pending.get(record.id);

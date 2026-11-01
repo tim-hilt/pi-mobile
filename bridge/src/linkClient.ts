@@ -25,6 +25,8 @@ export class LinkClient {
   private share: PiShare | undefined;
   /** The session the bridge last heard announced on this connection. */
   private announced: string | undefined;
+  /** Whether pi's terminal is focused, as last reported; unknown until the first report. */
+  private focused: boolean | undefined;
   private retryMs = FIRST_RETRY_MS;
   private retry: NodeJS.Timeout | undefined;
   private closed = false;
@@ -50,6 +52,17 @@ export class LinkClient {
     if (!this.connected || share.info().id === this.announced) return;
     this.announced = share.info().id;
     for (const record of share.introduction()) this.send(record);
+    this.sendFocus();
+  }
+
+  /**
+   * Pi's terminal gained or lost focus. Belongs to the link, not to a session:
+   * it carries over to whichever session is attached next, and to a new
+   * connection after the bridge restarts.
+   */
+  setFocus(focused: boolean): void {
+    this.focused = focused;
+    this.sendFocus();
   }
 
   /** Stops sharing `share`; the bridge keeps the link until another session is attached. */
@@ -92,6 +105,12 @@ export class LinkClient {
     this.closed = true;
     clearTimeout(this.retry);
     this.socket?.destroy();
+  }
+
+  /** Tells the bridge the focus, once it knows the session it applies to. */
+  private sendFocus(): void {
+    if (this.focused !== undefined && this.announced !== undefined)
+      this.send({ type: "focus", focused: this.focused });
   }
 
   private connect(): void {

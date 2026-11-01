@@ -21,6 +21,8 @@ export interface SettledRun {
   lastText?: string;
   /** Whether an app connection is joined to the session, i.e. someone is viewing it. */
   joined: boolean;
+  /** Whether the session's terminal is focused; absent when unknown. */
+  focused?: boolean;
 }
 
 /** Announces runs as they settle. */

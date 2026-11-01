@@ -292,6 +292,43 @@ test.each<Presence>(["away", "present", "unknown"])(
   }
 );
 
+test("a run in a focused terminal is not announced to a user who is present", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  gateway.focus = true;
+
+  runThrough(gateway, "success");
+  await settle();
+
+  expect(ntfy.posts).toEqual([]);
+});
+
+test.each<Presence>(["away", "unknown"])(
+  "a run in a focused terminal is announced to a user who is %s",
+  async (presence) => {
+    const ntfy = await fakeNtfy();
+    const gateway = await bridgeNotifying(
+      { baseUrl: ntfy.baseUrl, topic: "t" },
+      probing(presence)
+    );
+    gateway.focus = true;
+
+    runThrough(gateway, "success");
+
+    await ntfy.firstPost();
+  }
+);
+
+test("a run in an unfocused terminal is announced to a user who is present", async () => {
+  const ntfy = await fakeNtfy();
+  const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
+  gateway.focus = false;
+
+  runThrough(gateway, "success");
+
+  await ntfy.firstPost();
+});
+
 test("presence is probed when a run settles, not before", async () => {
   const ntfy = await fakeNtfy();
   const probe = vi.fn(probing("away"));

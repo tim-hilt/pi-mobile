@@ -8,7 +8,7 @@ const COOLDOWN_MS = 5000;
  * Decides whether a settled run is worth telling the user about, and passes
  * those that are on to `delivery`. A run notifies iff the user isn't known to
  * be looking at it (no app joined to the session, and away or its terminal
- * not focused) and the session wasn't notified within the last 5 s. Aborted
+ * not known to be focused) and the session wasn't notified within the last 5 s. Aborted
  * runs never reach the gate.
  * Anything unknown counts as not looking: it never swallows a notification.
  */
@@ -25,9 +25,7 @@ export class NotificationGate implements RunNotifier {
   runSettled(run: SettledRun): void {
     if (run.joined) return;
     void this.presence().then((presence) => {
-      // Terminal focus isn't reported yet: always unknown, so never focused.
-      const terminalFocused = false;
-      if (presence === "present" && terminalFocused) return;
+      if (presence === "present" && run.focused) return;
       // Decided and recorded synchronously: a burst can't slip past the cooldown.
       const now = Date.now();
       const last = this.lastNotified.get(run.sessionId);

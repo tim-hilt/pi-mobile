@@ -30,6 +30,11 @@ export type ShareRecord =
       error?: string;
       code?: string;
     }
+  /**
+   * The terminal pi runs in gained or lost focus. Applies to the whole link,
+   * across session replacements; absent until the terminal first reports one.
+   */
+  | { type: "focus"; focused: boolean }
   /** Asks for the app's pairing URL; allowed before `announce`. */
   | { type: "pairing" };
 

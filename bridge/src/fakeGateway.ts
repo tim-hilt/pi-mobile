@@ -38,6 +38,8 @@ export class FakeGateway implements SessionGateway {
   status: SessionStatus = { cost: 0 };
   /** What `history()` reports as queued. */
   pending: QueuedMessages = { steering: [], followUp: [] };
+  /** What `terminalFocused()` reports; unknown unless a test sets it. */
+  focus: boolean | undefined;
   /** When set, the next `call` or `searchFiles` rejects with it. */
   failNextWith: Error | undefined;
 
@@ -77,6 +79,8 @@ export class FakeGateway implements SessionGateway {
   };
 
   info = () => this.current;
+
+  terminalFocused = () => this.focus;
 
   /** Like pi replacing its session (`/new`, `/resume`): becomes `id` with `messages`. */
   replace(id: string, messages: TranscriptMessage[] = []): void {

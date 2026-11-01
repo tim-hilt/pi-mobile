@@ -68,6 +68,12 @@ export interface SessionGateway {
   searchFiles(query: string, limit: number): Promise<string[]>;
   /** Identity of the session pi currently runs; replaced on `sessionChanged`, updated on `infoChanged`. */
   info(): SharedSessionInfo;
+  /**
+   * Whether the terminal pi runs in is focused, as of its latest report;
+   * `undefined` while unknown (no report yet, unsupported terminal, no bridge
+   * link to carry it). Survives pi replacing its session.
+   */
+  terminalFocused(): boolean | undefined;
   /** Registers `listener` for session events; returns the unsubscribe function. */
   subscribe(listener: (event: GatewayEvent) => void): () => void;
 }

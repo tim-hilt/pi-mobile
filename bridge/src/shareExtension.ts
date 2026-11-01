@@ -11,6 +11,11 @@ import { defaultSocketPath } from "./link.js";
 import { LinkClient } from "./linkClient.js";
 import { pairingQr } from "./pairing.js";
 import { PiShare, type PiEvent } from "./piShare.js";
+import {
+  DISABLE_FOCUS_REPORTING,
+  ENABLE_FOCUS_REPORTING,
+  focusChange,
+} from "./terminalFocus.js";
 
 /**
  * Pi extension that shares every interactive pi session with the bridge, so
@@ -20,6 +25,7 @@ import { PiShare, type PiEvent } from "./piShare.js";
  */
 export default function share(pi: ExtensionAPI) {
   let current: PiShare | undefined;
+  let stopFocusInput: (() => void) | undefined;
 
   pi.on("session_start", (_event, ctx) => {
     // Print and JSON runs are one-shot; only sessions someone works in are shared.
@@ -27,15 +33,29 @@ export default function share(pi: ExtensionAPI) {
     const link = linkClient();
     current = new PiShare(host(pi, ctx), (record) => link.send(record));
     link.attach(current);
+    if (ctx.mode !== "tui") return;
+    // Pi's fullscreen TUI consumes the focus codes before extensions see them: focus stays unknown there.
+    process.stdout.write(ENABLE_FOCUS_REPORTING);
+    stopFocusInput = ctx.ui.onTerminalInput((data) => {
+      const focused = focusChange(data);
+      if (focused === undefined) return;
+      link.setFocus(focused);
+      return { consume: true };
+    });
   });
   pi.on("session_info_changed", () => current?.infoChanged());
   pi.on("session_shutdown", (event) => {
+    const reporting = stopFocusInput !== undefined;
+    stopFocusInput?.();
+    stopFocusInput = undefined;
     if (!current) return;
     const link = linkClient();
     link.detach(current);
     current = undefined;
     // Otherwise pi is replacing the session and the next one re-announces on the same link.
     if (event.reason === "quit") {
+      // Replacement keeps reporting on: the next session listens again.
+      if (reporting) process.stdout.write(DISABLE_FOCUS_REPORTING);
       link.close();
       delete (globalThis as Record<symbol, unknown>)[LINK];
     }

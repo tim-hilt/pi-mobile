@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { LinkClient } from "./linkClient.js";
 import { listenForShares } from "./linkGateway.js";
+import type { RunNotifier, SettledRun } from "./ntfy.js";
 import { PiShare, type PiEvent, type PiHost } from "./piShare.js";
 import { CommandError } from "./protocol.js";
 import { SessionHub, type BridgeEvent } from "./session.js";
@@ -21,8 +22,8 @@ function tempDir() {
   return dir;
 }
 
-async function listening(path: string) {
-  const hub = new SessionHub();
+async function listening(path: string, notifier?: RunNotifier) {
+  const hub = new SessionHub(undefined, notifier);
   const shares = await listenForShares(path, hub);
   cleanups.push(() => shares.close());
   return hub;
@@ -257,4 +258,72 @@ test("asking for the pairing URL fails without a bridge or without a public URL"
   );
   await listening(path);
   await expect(client(path).pairingUrl()).rejects.toThrow("publicUrl");
+});
+
+/** A notifier recording the runs that settle, to observe what the bridge knows about them. */
+function recording() {
+  const runs: SettledRun[] = [];
+  const notifier: RunNotifier = { runSettled: (run) => void runs.push(run) };
+  return { runs, notifier };
+}
+
+const runSettles = (share: PiShare) => {
+  share.handle({ type: "agent_start" } as PiEvent);
+  share.handle({ type: "agent_settled" } as PiEvent);
+};
+
+test("the terminal's focus reaches the rule of the session's settled runs", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const { runs, notifier } = recording();
+  const hub = await listening(path, notifier);
+  const link = client(path);
+  const s = share(link, pi("s1").host);
+  await eventually(() => hub.find("s1"));
+
+  runSettles(s);
+  await eventually(() => runs.length === 1);
+  link.setFocus(true);
+  await eventually(() => hub.find("s1")?.gateway.terminalFocused());
+  runSettles(s);
+  await eventually(() => runs.length === 2);
+  link.setFocus(false);
+  await eventually(() => hub.find("s1")?.gateway.terminalFocused() === false);
+  runSettles(s);
+  await eventually(() => runs.length === 3);
+
+  expect(runs.map((run) => run.focused)).toEqual([undefined, true, false]);
+});
+
+test("the terminal's focus carries over when pi replaces its session", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const { runs, notifier } = recording();
+  const hub = await listening(path, notifier);
+  const link = client(path);
+  const first = share(link, pi("s1").host);
+  await eventually(() => hub.find("s1"));
+  link.setFocus(true);
+  await eventually(() => hub.find("s1")?.gateway.terminalFocused());
+
+  link.detach(first);
+  const second = share(link, pi("s2").host);
+  await eventually(() => hub.find("s2"));
+  runSettles(second);
+
+  await eventually(() => runs.length === 1);
+  expect(runs[0]).toMatchObject({ sessionId: "s2", focused: true });
+});
+
+test("focus reported before the session is shared counts once it is", async () => {
+  const path = join(tempDir(), "bridge.sock");
+  const { runs, notifier } = recording();
+  const hub = await listening(path, notifier);
+  const link = client(path);
+  link.setFocus(true);
+
+  const s = share(link, pi("s1").host);
+  await eventually(() => hub.find("s1"));
+  runSettles(s);
+
+  await eventually(() => runs.length === 1);
+  expect(runs[0]).toMatchObject({ focused: true });
 });

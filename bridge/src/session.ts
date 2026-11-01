@@ -255,6 +255,7 @@ export class Session {
           errorMessage: event.errorMessage,
           lastText: this.lastText,
           joined: this.listeners.size > 0,
+          focused: this.gateway.terminalFocused(),
         });
       this.lastText = undefined;
     }
