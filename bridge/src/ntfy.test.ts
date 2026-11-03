@@ -83,14 +83,22 @@ const runThrough = (gateway: FakeGateway, stopReason: StopReason) => {
 };
 
 const ICON = "https://upload.wikimedia.org/wikipedia/commons/8/81/Pi_logo.png";
+/** Just the answer, without the stats prefix. */
+const answer = (message: string) => message.slice(message.indexOf("\n\n") + 2);
 
-test("a finished run is published to the topic with the last answer", async () => {
+test("a finished run is published with its stats and last answer", async () => {
   const ntfy = await fakeNtfy();
   const gateway = await bridgeNotifying({
     baseUrl: ntfy.baseUrl,
     topic: "xk3",
   });
   gateway.current = { ...gateway.current, id: "s7", cwd: "/home/me/leaf" };
+  gateway.emit({
+    name: "status",
+    contextTokens: 70_400,
+    contextWindow: 1_000_000,
+    cost: 0.42,
+  });
   gateway.emit({ name: "runStarted" });
   gateway.emit({ name: "messageEnd", text: "first", thinking: "" });
   gateway.emit({ name: "messageEnd", text: "  **Done.**  ", thinking: "hmm" });
@@ -103,7 +111,9 @@ test("a finished run is published to the topic with the last answer", async () =
   expect(JSON.parse(post.body)).toEqual({
     topic: "xk3",
     title: "leaf: Agent Finished",
-    message: "**Done.**",
+    message: expect.stringMatching(
+      /^\d+s • 70\.4k\/1\.0M • \$0\.42\n\n\*\*Done\.\*\*$/
+    ),
     tags: ["robot"],
     markdown: true,
     icon: ICON,
@@ -177,7 +187,7 @@ test("a run without an answer falls back to its error, then a generic message", 
 
   while (ntfy.posts.length < 2) await new Promise((r) => setTimeout(r, 5));
 
-  expect(ntfy.posts.map((p) => JSON.parse(p.body).message)).toEqual([
+  expect(ntfy.posts.map((p) => answer(JSON.parse(p.body).message))).toEqual([
     "rate limited",
     "The agent finished.",
   ]);
@@ -195,19 +205,21 @@ test("an answer from an earlier run is not reported again", async () => {
 
   while (ntfy.posts.length < 2) await new Promise((r) => setTimeout(r, 5));
 
-  expect(JSON.parse(ntfy.posts[1]!.body).message).toBe("The agent finished.");
+  expect(answer(JSON.parse(ntfy.posts[1]!.body).message)).toBe(
+    "The agent finished."
+  );
 });
 
-test("a long answer is truncated", async () => {
+test("a long answer is published in full", async () => {
   const ntfy = await fakeNtfy();
   const gateway = await bridgeNotifying({ baseUrl: ntfy.baseUrl, topic: "t" });
   gateway.emit({ name: "runStarted" });
-  gateway.emit({ name: "messageEnd", text: "x".repeat(1500), thinking: "" });
+  gateway.emit({ name: "messageEnd", text: "x".repeat(6000), thinking: "" });
   gateway.emit({ name: "runSettled", stopReason: "success" });
 
   const { message } = JSON.parse((await ntfy.firstPost()).body);
 
-  expect(message).toBe(`${"x".repeat(1000)}…`);
+  expect(answer(message)).toBe("x".repeat(6000));
 });
 
 test("a base URL with a path still publishes to it", async () => {

@@ -335,7 +335,13 @@ const connected = (link: LinkClient) => link.pairingUrl().catch(() => {});
 /** A `pi -p` process: no shared session, only what its runs report. */
 function printPi(link: LinkClient, id = "p1", name?: string) {
   return new PrintRun(
-    { sessionId: () => id, sessionName: () => name, cwd: "/work/leaf" },
+    {
+      sessionId: () => id,
+      sessionName: () => name,
+      cwd: "/work/leaf",
+      contextUsage: () => ({ tokens: 70_400, contextWindow: 1_000_000 }),
+      cost: () => 0.42,
+    },
     (record) => link.send(record)
   );
 }
@@ -375,6 +381,10 @@ test("a settled print-mode run is reported without being listed", async () => {
     sessionName: "nightly",
     stopReason: "success",
     lastText: "All done.",
+    durationMs: expect.any(Number),
+    contextTokens: 70_400,
+    contextWindow: 1_000_000,
+    cost: 0.42,
     listed: false,
     joined: false,
   });

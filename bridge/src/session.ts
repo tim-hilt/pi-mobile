@@ -3,6 +3,7 @@ import type {
   GatewayEvent,
   SessionGateway,
   SessionHistory,
+  SessionStatus,
   SharedSessionInfo,
   StopReason,
 } from "./gateway.js";
@@ -87,6 +88,8 @@ export class Session {
   private streaming: { text: string; thinking: string } | undefined;
   /** Text of the current run's latest assistant message that had any, for the notifier. */
   private lastText: string | undefined;
+  /** What pi's footer shows, as the notifier reports it alongside a settled run. */
+  private status: SessionStatus = { cost: 0 };
   /** A delta or output update not yet sequenced, waiting for more to merge into it. */
   private held:
     { event: Omit<BridgeEvent, "seq">; timer: NodeJS.Timeout } | undefined;
@@ -174,10 +177,9 @@ export class Session {
     this.gateway.history(deliver);
   }
 
-  private snapshot({
-    messages: completed,
-    ...queueAndStatus
-  }: SessionHistory): BridgeEvent {
+  private snapshot(history: SessionHistory): BridgeEvent {
+    const { messages: completed, steering, followUp, ...status } = history;
+    this.status = status;
     // `streaming` already holds what is held back: sequence it before the snapshot claims its seq.
     this.flush();
     const messages: Record<string, unknown>[] = [...completed];
@@ -194,7 +196,9 @@ export class Session {
         cwd,
         messages,
         running,
-        ...queueAndStatus,
+        steering,
+        followUp,
+        ...status,
         // The app has no other way to learn when a run it joined midway began.
         ...(running && {
           elapsedMs: Math.round(performance.now() - startedAt),
@@ -213,6 +217,7 @@ export class Session {
     this.runStartedAt = undefined;
     this.lastStopReason = undefined;
     this.streaming = undefined;
+    this.status = { cost: 0 };
     this.log = [];
     this.seq++;
     this.options.onChange();
@@ -235,6 +240,9 @@ export class Session {
     } else if (event.name === "messageEnd") {
       this.streaming = undefined;
       if (event.text.trim()) this.lastText = event.text;
+    } else if (event.name === "status") {
+      const { name: _, ...status } = event;
+      this.status = status;
     } else if (event.name === "runSettled") {
       const durationMs = Math.round(
         performance.now() - (this.runStartedAt ?? performance.now())
@@ -254,6 +262,14 @@ export class Session {
           stopReason: event.stopReason,
           errorMessage: event.errorMessage,
           lastText: this.lastText,
+          durationMs,
+          ...(this.status.contextTokens !== undefined && {
+            contextTokens: this.status.contextTokens,
+          }),
+          ...(this.status.contextWindow !== undefined && {
+            contextWindow: this.status.contextWindow,
+          }),
+          cost: this.status.cost,
           listed: true,
           joined: this.listeners.size > 0,
           focused: this.gateway.terminalFocused(),

@@ -19,6 +19,14 @@ export interface RunOutcome {
   errorMessage?: string;
   /** Text of the run's latest assistant message that had any. */
   lastText?: string;
+  /** How long the run took, in milliseconds. */
+  durationMs?: number;
+  /** Tokens the active model's context holds; absent when unknown. */
+  contextTokens?: number;
+  /** Size of the active model's context window; absent without a model. */
+  contextWindow?: number;
+  /** Price of the whole session so far, in USD. */
+  cost?: number;
 }
 
 /** A settled run, with what the bridge knows about who is looking. */
@@ -37,8 +45,6 @@ export interface RunNotifier {
   runSettled(run: SettledRun): void;
 }
 
-// ntfy rejects messages above 4096 bytes; stay well below.
-const MAX_MESSAGE_CHARS = 1000;
 const ICON = "https://upload.wikimedia.org/wikipedia/commons/8/81/Pi_logo.png";
 const OUTCOME: Record<SettledRun["stopReason"], string> = {
   success: "Agent Finished",
@@ -57,13 +63,11 @@ export class NtfyNotifier implements RunNotifier {
   runSettled(run: SettledRun): void {
     const text =
       run.lastText?.trim() || run.errorMessage || "The agent finished.";
+    const summary = stats(run).join(" • ");
     const payload = {
       topic: this.config.topic,
       title: `${run.sessionName ?? basename(run.cwd)}: ${OUTCOME[run.stopReason]}`,
-      message:
-        text.length > MAX_MESSAGE_CHARS
-          ? `${text.slice(0, MAX_MESSAGE_CHARS)}…`
-          : text,
+      message: summary ? `${summary}\n\n${text}` : text,
       tags: ["robot"],
       markdown: true,
       icon: ICON,
@@ -83,4 +87,35 @@ export class NtfyNotifier implements RunNotifier {
       })
       .catch((e) => console.warn(`ntfy unreachable: ${e}`));
   }
+}
+
+/** The run's time, context fill and session cost, e.g. `2m 34s • 70.4k/1.0M • $0.42`. */
+function stats(run: SettledRun): string[] {
+  const context =
+    run.contextWindow !== undefined
+      ? `${run.contextTokens !== undefined ? tokens(run.contextTokens) : "?"}/${tokens(run.contextWindow)}`
+      : undefined;
+  return [
+    run.durationMs !== undefined ? duration(run.durationMs) : undefined,
+    context,
+    run.cost !== undefined ? `$${run.cost.toFixed(2)}` : undefined,
+  ].filter((part): part is string => part !== undefined);
+}
+
+/** Whole seconds, at most two units, e.g. `1h 2m`, `2m 34s`, `9s`. */
+function duration(ms: number): string {
+  const total = Math.round(ms / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+/** Token count with one decimal, as the app writes it: `999`, `18.8k`, `1.0M`. */
+function tokens(count: number): string {
+  if (count < 1000) return `${count}`;
+  if (count < 1_000_000) return `${(count / 1000).toFixed(1)}k`;
+  return `${(count / 1_000_000).toFixed(1)}M`;
 }

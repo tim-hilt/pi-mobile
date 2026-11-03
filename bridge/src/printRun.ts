@@ -11,6 +11,10 @@ export interface PrintHost {
   sessionId(): string;
   sessionName(): string | undefined;
   cwd: string;
+  /** The active model's context fill; absent without a model. */
+  contextUsage?(): { tokens: number | null; contextWindow: number } | undefined;
+  /** Price of the whole session so far, in USD. */
+  cost?(): number;
 }
 
 /**
@@ -22,6 +26,7 @@ export class PrintRun {
   private lastAssistant: (PiMessage & { role: "assistant" }) | undefined;
   /** Text of the run's latest assistant message that had any. */
   private lastText: string | undefined;
+  private startedAt: number | undefined;
 
   constructor(
     private host: PrintHost,
@@ -34,6 +39,7 @@ export class PrintRun {
       case "agent_start":
         this.lastAssistant = undefined;
         this.lastText = undefined;
+        this.startedAt = performance.now();
         break;
       case "message_end": {
         const message = event.message as PiMessage;
@@ -50,6 +56,8 @@ export class PrintRun {
         );
         if (stopReason === "aborted") break;
         const name = this.host.sessionName();
+        const context = this.host.contextUsage?.();
+        const cost = this.host.cost?.();
         this.sink({
           type: "settled",
           run: {
@@ -59,8 +67,17 @@ export class PrintRun {
             stopReason,
             ...(errorMessage !== undefined && { errorMessage }),
             ...(this.lastText !== undefined && { lastText: this.lastText }),
+            ...(this.startedAt !== undefined && {
+              durationMs: Math.round(performance.now() - this.startedAt),
+            }),
+            ...(typeof context?.tokens === "number" && {
+              contextTokens: context.tokens,
+            }),
+            ...(context && { contextWindow: context.contextWindow }),
+            ...(cost !== undefined && { cost }),
           },
         });
+        this.startedAt = undefined;
         break;
       }
     }

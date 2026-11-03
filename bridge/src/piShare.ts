@@ -56,7 +56,6 @@ export interface PiHost {
  */
 const STATUS_CHANGES = new Set([
   "turn_end",
-  "agent_settled",
   "model_select",
   "thinking_level_select",
   "session_compact",
@@ -222,6 +221,9 @@ export class PiShare implements ShareCalls {
         break;
       case "agent_settled":
         this.running = false;
+        // The final turn's usage is in now: report it before the run settles,
+        // so a notifier sees the run's context fill and cost.
+        this.reportStatus();
         this.emit(this.settled(event.aborted === true));
         // Pi drops or hands back what it didn't take in (e.g. Escape puts it in the editor).
         if (!this.host.hasPendingMessages() && this.hasQueued())
@@ -320,17 +322,7 @@ export class PiShare implements ShareCalls {
 
   /** Price of the whole session, across branches, as pi's `/session` reports it. */
   private cost(): number {
-    let cost = 0;
-    for (const entry of this.host.entries() as Array<
-      SessionEntry & { usage?: PiUsage }
-    >) {
-      const usage =
-        entry.type === "message"
-          ? (entry.message as PiMessage & { usage?: PiUsage }).usage
-          : entry.usage;
-      cost += usage?.cost.total ?? 0;
-    }
-    return cost;
+    return totalCost(this.host.entries());
   }
 
   /** The text of the branch's first user message, `""` if none. */
@@ -407,6 +399,19 @@ interface PiUsage {
   cacheRead: number;
   cacheWrite: number;
   cost: { total: number };
+}
+
+/** Price of every usage entry, across branches, as pi's `/session` reports it. */
+export function totalCost(entries: SessionEntry[]): number {
+  let cost = 0;
+  for (const entry of entries as Array<SessionEntry & { usage?: PiUsage }>) {
+    const usage =
+      entry.type === "message"
+        ? (entry.message as PiMessage & { usage?: PiUsage }).usage
+        : entry.usage;
+    cost += usage?.cost.total ?? 0;
+  }
+  return cost;
 }
 
 interface PiBlock {

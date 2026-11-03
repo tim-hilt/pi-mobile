@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { defaultSocketPath } from "./link.js";
 import { LinkClient } from "./linkClient.js";
 import { pairingQr } from "./pairing.js";
-import { PiShare, type PiEvent } from "./piShare.js";
+import { PiShare, totalCost, type PiEvent } from "./piShare.js";
 import { PrintRun } from "./printRun.js";
 import {
   DISABLE_FOCUS_REPORTING,
@@ -41,6 +41,8 @@ export default function share(pi: ExtensionAPI) {
           sessionId: () => ctx.sessionManager.getSessionId(),
           sessionName: () => pi.getSessionName(),
           cwd: ctx.cwd,
+          contextUsage: () => ctx.getContextUsage(),
+          cost: () => totalCost(ctx.sessionManager.getEntries()),
         },
         (record) => link.send(record)
       );
